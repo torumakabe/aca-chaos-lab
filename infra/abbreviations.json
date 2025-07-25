@@ -1,0 +1,13 @@
+{
+  "appContainerApps": "ca-",
+  "appManagedEnvironments": "cae-",
+  "cacheRedis": "redis-",
+  "containerRegistryRegistries": "cr",
+  "insightsComponents": "ai-",
+  "managedIdentityUserAssignedIdentities": "id-",
+  "networkNetworkSecurityGroups": "nsg-",
+  "networkPrivateEndpoints": "pe-",
+  "networkVirtualNetworks": "vnet-",
+  "operationalInsightsWorkspaces": "log-",
+  "resourcesResourceGroups": "rg-"
+}
