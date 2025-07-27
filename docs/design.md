@@ -359,7 +359,7 @@ except Exception as e:
 - **CI/CD**: GitHub Actions (将来的な拡張用)
 
 ### アプリケーション
-- **言語**: Python 3.11
+- **言語**: Python 3.13
 - **Webフレームワーク**: FastAPI
 - **非同期処理**: asyncio
 - **Redisクライアント**: redis-py (async) + azure-identity
@@ -423,7 +423,7 @@ AZURE_CLIENT_ID=<managed-identity-client-id>
 name = "aca-chaos-lab"
 version = "0.1.0"
 description = "Azure Container Apps Chaos Lab"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
@@ -452,7 +452,7 @@ select = ["E", "F", "I", "N", "UP", "ASYNC", "S", "B", "A", "C4", "T20", "SIM"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -475,7 +475,7 @@ uv pip compile pyproject.toml -o requirements.txt
 
 #### Dockerfile（本番用）
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 

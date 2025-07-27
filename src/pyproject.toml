@@ -2,7 +2,7 @@
 name = "aca-chaos-lab"
 version = "0.1.0"
 description = "Azure Container Apps Chaos Lab"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
@@ -46,7 +46,7 @@ select = ["E", "F", "I", "N", "UP", "ASYNC", "S", "B", "A", "C4", "T20", "SIM"]
 ignore = ["E501", "S101"]  # E501: line too long, S101: use of assert in tests
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

@@ -3,7 +3,7 @@ param tags object
 param logAnalyticsName string
 param applicationInsightsName string
 
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: logAnalyticsName
   location: location
   tags: tags
@@ -31,4 +31,6 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 output logAnalyticsWorkspaceId string = logAnalytics.id
+output logAnalyticsWorkspaceName string = logAnalytics.name
+@secure()
 output applicationInsightsConnectionString string = applicationInsights.properties.ConnectionString

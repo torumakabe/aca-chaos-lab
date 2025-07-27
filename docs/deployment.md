@@ -1,6 +1,6 @@
 # デプロイメントガイド
 
-このガイドでは、Azure Container Apps カオスラボをAzureサブスクリプションにデプロイする手順を説明します。
+このガイドでは、Azure Container Apps Chaos LabをAzureサブスクリプションにデプロイする手順を説明します。
 
 ## 前提条件
 

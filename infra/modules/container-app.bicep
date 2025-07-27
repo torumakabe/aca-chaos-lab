@@ -1,25 +1,34 @@
 param location string
 param tags object
 param containerAppName string
-param containerAppsEnvironmentId string
+param containerAppsEnvironmentName string
 param containerImage string
 param redisHost string
+@secure()
 param applicationInsightsConnectionString string
-param managedIdentityId string
+param managedIdentityName string
 param managedIdentityClientId string
 
-resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
+resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
+  name: managedIdentityName
+}
+
+resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
+  name: containerAppsEnvironmentName
+}
+
+resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
   name: containerAppName
   location: location
   tags: tags
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      '${managedIdentityId}': {}
+      '${managedIdentity.id}': {}
     }
   }
   properties: {
-    managedEnvironmentId: containerAppsEnvironmentId
+    managedEnvironmentId: containerAppsEnvironment.id
     configuration: {
       ingress: {
         external: true
@@ -28,7 +37,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
       }
       registries: [
         {
-          identity: managedIdentityId
+          identity: managedIdentity.id
           server: split(containerImage, '/')[0]
         }
       ]

@@ -30,15 +30,15 @@ resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 // Private DNS Zone for ACR
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.azurecr.io'
   location: 'global'
   tags: tags
 }
 
-resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
   parent: privateDnsZone
-  name: '${registryName}-link'
+  name: 'vnetlink-${registryName}'
   location: 'global'
   properties: {
     registrationEnabled: false
@@ -49,8 +49,8 @@ resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
 }
 
 // Private Endpoint for ACR
-resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
-  name: '${registryName}-pe'
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: 'pe-${registryName}'
   location: location
   tags: tags
   properties: {
@@ -59,7 +59,7 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
     }
     privateLinkServiceConnections: [
       {
-        name: '${registryName}-connection'
+        name: 'plsc-${registryName}'
         properties: {
           privateLinkServiceId: containerRegistry.id
           groupIds: [
@@ -71,7 +71,7 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
   }
 }
 
-resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = {
+resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
   parent: privateEndpoint
   name: 'default'
   properties: {

@@ -1,33 +1,30 @@
 param location string
 param tags object
 param environmentName string
-param logAnalyticsWorkspaceId string
-param applicationInsightsConnectionString string
+param logAnalyticsWorkspaceName string
 param containerAppsSubnetId string
 
-resource environment 'Microsoft.App/managedEnvironments@2023-05-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: logAnalyticsWorkspaceName
+}
+
+resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: environmentName
   location: location
   tags: tags
   properties: {
-    daprAIConnectionString: applicationInsightsConnectionString
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: reference(logAnalyticsWorkspaceId).customerId
-        sharedKey: listKeys(logAnalyticsWorkspaceId, '2022-10-01').primarySharedKey
+        customerId: logAnalytics.properties.customerId
+        sharedKey: logAnalytics.listKeys().primarySharedKey
       }
     }
     vnetConfiguration: {
       infrastructureSubnetId: containerAppsSubnetId
     }
-    workloadProfiles: [
-      {
-        name: 'Consumption'
-        workloadProfileType: 'Consumption'
-      }
-    ]
   }
 }
 
 output environmentId string = environment.id
+output environmentName string = environment.name

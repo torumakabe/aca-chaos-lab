@@ -9,16 +9,13 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
-@description('Id of the user or app to assign application roles')
-param principalId string = ''
-
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = {
   'azd-env-name': environmentName
 }
 
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2022-09-01' = {
+resource resourceGroup 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: '${abbrs.resourcesResourceGroups}${environmentName}'
   location: location
   tags: tags
@@ -64,7 +61,6 @@ module redis './modules/redis.bicep' = {
     redisName: '${abbrs.cacheRedis}${resourceToken}'
     vnetId: network.outputs.vnetId
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
-    principalId: principalId
     containerAppPrincipalId: managedIdentity.outputs.managedIdentityPrincipalId
   }
 }
@@ -89,8 +85,7 @@ module containerAppsEnvironment './modules/container-apps-environment.bicep' = {
     location: location
     tags: tags
     environmentName: '${abbrs.appManagedEnvironments}${resourceToken}'
-    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
+    logAnalyticsWorkspaceName: monitoring.outputs.logAnalyticsWorkspaceName
     containerAppsSubnetId: network.outputs.containerAppsSubnetId
   }
 }
@@ -102,11 +97,11 @@ module containerApp './modules/container-app.bicep' = {
     location: location
     tags: tags
     containerAppName: '${abbrs.appContainerApps}app-${resourceToken}'
-    containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
+    containerAppsEnvironmentName: containerAppsEnvironment.outputs.environmentName
     containerImage: '${containerRegistry.outputs.loginServer}/chaos-lab-app:latest'
     redisHost: redis.outputs.redisHost
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-    managedIdentityId: managedIdentity.outputs.managedIdentityId
+    managedIdentityName: managedIdentity.outputs.managedIdentityName
     managedIdentityClientId: managedIdentity.outputs.managedIdentityClientId
   }
 }
@@ -122,4 +117,5 @@ output AZURE_REDIS_HOST string = redis.outputs.redisHost
 output AZURE_REDIS_PORT int = redis.outputs.redisPort
 output AZURE_CONTAINER_REGISTRY_NAME string = containerRegistry.outputs.registryName
 output AZURE_CONTAINER_REGISTRY_LOGIN_SERVER string = containerRegistry.outputs.loginServer
+@secure()
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString

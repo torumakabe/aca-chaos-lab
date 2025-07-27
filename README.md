@@ -1,10 +1,10 @@
-# Azure Container Apps カオスラボ
+# Azure Container Apps Chaos Lab
 
 Azure Container Apps上で動作するアプリケーションの障害耐性をテストするためのカオスエンジニアリング環境です。Azure SRE Agentの動作検証を目的として設計されています。
 
 ## 概要
 
-Azure Container Apps カオスラボは、制御された環境で障害を注入し、システムの応答を観察するための機能を提供します：
+Azure Container Apps Chaos Labは、制御された環境で障害を注入し、システムの応答を観察するための機能を提供します：
 
 - **FastAPIアプリケーション**: Redis統合と可観測性を備えたWebサービス
 - **カオス注入API**: 様々な障害シナリオをトリガーするエンドポイント
@@ -17,7 +17,7 @@ Azure Container Apps カオスラボは、制御された環境で障害を注�
 ```mermaid
 graph TB
     subgraph "Public Internet"
-        Internet[インターネット]
+        Internet[クライアント]
     end
     
     subgraph "Azure Container Apps"
@@ -102,24 +102,24 @@ graph TB
 
 ### 必須ツール
 - **Azure サブスクリプション**: 適切な権限（Contributor以上）が必要
-- **[Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)**: v1.5.0以上
+- **[Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)**: v1.18.0以上
   - インフラストラクチャのプロビジョニングとデプロイ
   - 環境変数の管理
-- **[Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)**: v2.50.0以上
+- **[Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)**: v2.75.0以上
   - Azureリソースの操作
   - 障害注入スクリプトの実行
-- **[Docker](https://www.docker.com/get-started)**: v20.10以上
+- **[Docker](https://www.docker.com/get-started)**: v28.3以上
   - コンテナイメージのビルド（azdが自動的に使用）
 
 ### ローカル開発用（オプション）
-- **Python**: 3.11以上
+- **Python**: 3.13以上
 - **[uv](https://github.com/astral-sh/uv)**: Pythonパッケージマネージャー（推奨）
 
 ## クイックスタート
 
 ### ローカル開発
 
-1. リポジトリのクローン：
+1. リポジトリのクローンと移動：
    ```bash
    git clone https://github.com/torumakabe/aca-chaos-lab.git
    cd aca-chaos-lab
@@ -127,33 +127,41 @@ graph TB
 
 2. Python環境のセットアップ：
    ```bash
+   # srcディレクトリに移動
    cd src
+   
+   # uvのインストール（未インストールの場合）
    pip install uv
-   uv venv
-   source .venv/bin/activate  # Windowsの場合: .venv\Scripts\activate
-   uv pip install -e ".[dev]"
+   
+   # 依存関係のインストール（開発用ツール含む）
+   uv sync --extra dev
    ```
 
 3. ローカル実行：
    ```bash
+   # 引き続きsrcディレクトリで実行
    # Redisなしで実行（ローカルテスト用）
-   export REDIS_ENABLED=false
-   uvicorn app.main:app --reload
+   REDIS_ENABLED=false uv run uvicorn app.main:app --reload
    
    # またはazdデプロイ後、その環境値を使用
    # アプリケーションは自動的にazd環境変数を検出して使用します
-   uvicorn app.main:app --reload
+   uv run uvicorn app.main:app --reload
    ```
 
 ### Azureへのデプロイ
 
 1. Azure Developer CLIの初期化：
    ```bash
+   # プロジェクトルートディレクトリに戻る
+   cd ..  # srcディレクトリから戻る
+   
+   # azdの初期化（初回のみ）
    azd init
    ```
 
 2. インフラストラクチャとアプリケーションのデプロイ：
    ```bash
+   # プロジェクトルートディレクトリで実行
    azd up
    ```
    このコマンドで以下がすべて自動的に実行されます：
@@ -165,6 +173,7 @@ graph TB
 
 3. 動作確認：
    ```bash
+   # プロジェクトルートディレクトリで実行
    # エンドポイントURLの取得
    APP_URL=$(azd env get-value AZURE_CONTAINER_APP_URI)
    
@@ -201,9 +210,12 @@ graph TB
 
 すべてのスクリプトはazd環境変数に対応しています。`azd up`の後、パラメータを指定せずに実行できます。
 
+**実行場所：プロジェクトルートディレクトリ** (`aca-chaos-lab/`)
+
 ### ネットワーク障害注入
 
 ```bash
+# プロジェクトルートディレクトリで実行
 # azd環境変数を使用（60秒間の障害）
 ./scripts/inject-network-failure.sh
 
@@ -220,6 +232,7 @@ graph TB
 ### デプロイメント障害注入
 
 ```bash
+# プロジェクトルートディレクトリで実行
 # azd環境変数を使用（デフォルト: nonexistent-image）
 ./scripts/inject-deployment-failure.sh
 
@@ -238,7 +251,10 @@ graph TB
 
 様々な負荷テストシナリオの実行：
 
+**実行場所：負荷テストディレクトリ** (`aca-chaos-lab/src/tests/load/`)
+
 ```bash
+# プロジェクトルートディレクトリから負荷テストディレクトリに移動
 cd src/tests/load
 
 # ベースラインテスト（カオスなし）
@@ -252,18 +268,36 @@ cd src/tests/load
 
 # カオステスト（障害注入あり）
 ./run-load-tests.sh https://myapp.azurecontainerapps.io chaos
+
+# 負荷テスト完了後はプロジェクトルートに戻る
+cd ../../..
 ```
 
 ## テスト
 
 ### ユニットテスト
+
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
+
 ```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
+
+# ユニットテストの実行
 uv run pytest tests/unit/ -v
+
+# テスト完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
 ```
 
 ### 統合テスト
+
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
+
 ```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
 # テスト環境変数の設定
 export TEST_BASE_URL=https://myapp.azurecontainerapps.io
 export TEST_RESOURCE_GROUP=my-resource-group
@@ -272,13 +306,21 @@ export TEST_CONTAINER_APP_NAME=my-app
 
 # 統合テストの実行
 uv run pytest tests/integration/ -v -m e2e
+
+# テスト完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
 ```
 
 ## 開発
 
 ### コード品質
 
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
+
 ```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
 # リンティング
 uv run ruff check app/
 
@@ -287,13 +329,24 @@ uv run mypy app/
 
 # 自動修正
 uv run ruff check app/ --fix
+
+# 開発作業完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
 ```
 
 ### Dockerイメージのビルド
 
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
+
 ```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
+
+# Dockerイメージのビルド
 docker build -t aca-chaos-lab:latest .
+
+# ビルド完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
 ```
 
 ## 環境変数
@@ -313,7 +366,10 @@ docker build -t aca-chaos-lab:latest .
 
 `azd up`の後、以下の環境変数が利用可能です：
 
+**実行場所：プロジェクトルートディレクトリ** (`aca-chaos-lab/`)
+
 ```bash
+# プロジェクトルートディレクトリで実行
 # 環境変数の一覧表示
 azd env get-values
 
@@ -321,6 +377,32 @@ azd env get-values
 azd env get-value AZURE_CONTAINER_APP_URI
 azd env get-value AZURE_RESOURCE_GROUP
 azd env get-value AZURE_CONTAINER_APP_NAME
+```
+
+## トラブルシューティング
+
+### デプロイメントエラー
+
+#### "InvalidTemplate" エラー
+- **症状**: `The template resource requires an API version`
+- **原因**: BicepテンプレートでAPIバージョンが不足
+- **解決**: 最新のBicepテンプレートを取得してください
+
+#### "RoleDefinitionDoesNotExist" エラー  
+- **症状**: `The specified role definition with ID does not exist`
+- **原因**: 間違ったロール定義IDが指定されている
+- **解決**: 正しいロール定義IDに修正済みです
+
+#### デプロイメント失敗時の対処
+```bash
+# 既存のリソースを削除
+azd down --force --purge
+
+# 削除完了を確認（5-15分程度かかる場合があります）
+az group list --query "[?starts_with(name, 'rg-aca-chaos-lab')].name" -o table
+
+# 削除完了後、再デプロイ
+azd up
 ```
 
 ## セキュリティ考慮事項

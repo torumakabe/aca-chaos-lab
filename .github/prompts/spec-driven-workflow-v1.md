@@ -10,7 +10,7 @@ tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'githubRepo',
 
 **常にこれらの成果物を維持する:**
 
-成果物はすべて [/docs/](/docs/) に保存する。
+成果物はすべて [/docs/](../../docs/) に保存する。
 
 - **`requirements.md`**: 構造化されたEARS記法でのユーザーストーリーと受け入れ基準。
 - **`design.md`**: 技術アーキテクチャ、シーケンス図、実装の考慮事項。

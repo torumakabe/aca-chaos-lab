@@ -47,9 +47,15 @@ class TestLoadSimulation:
     @patch("app.chaos.asyncio.create_task")
     def test_start_load_success(self, mock_create_task, client):
         """Test successful load start."""
-        # Mock the task
+        # Mock the task and consume the coroutine
         mock_task = MagicMock()
-        mock_create_task.return_value = mock_task
+        
+        def create_task_side_effect(coro):
+            # Consume the coroutine to prevent warning
+            coro.close()
+            return mock_task
+        
+        mock_create_task.side_effect = create_task_side_effect
         
         response = client.post("/chaos/load", json={
             "level": "medium",

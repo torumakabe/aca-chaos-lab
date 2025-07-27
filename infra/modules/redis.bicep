@@ -3,7 +3,6 @@ param tags object
 param redisName string
 param vnetId string
 param privateEndpointSubnetId string
-param principalId string
 param containerAppPrincipalId string = ''
 
 resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2024-10-01' = {
@@ -36,15 +35,15 @@ resource redisEnterpriseDatabase 'Microsoft.Cache/redisEnterprise/databases@2024
   }
 }
 
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.redisenterprise.cache.azure.net'
   location: 'global'
   tags: tags
 }
 
-resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
   parent: privateDnsZone
-  name: '${redisName}-link'
+  name: 'vnetlink-${redisName}'
   location: 'global'
   properties: {
     registrationEnabled: false
@@ -54,8 +53,8 @@ resource privateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
   }
 }
 
-resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
-  name: '${redisName}-pe'
+resource privateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: 'pe-${redisName}'
   location: location
   tags: tags
   properties: {
@@ -64,7 +63,7 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
     }
     privateLinkServiceConnections: [
       {
-        name: '${redisName}-connection'
+        name: 'plsc-${redisName}'
         properties: {
           privateLinkServiceId: redisEnterprise.id
           groupIds: [
@@ -76,7 +75,7 @@ resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-05-01' = {
   }
 }
 
-resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-05-01' = {
+resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
   parent: privateEndpoint
   name: 'default'
   properties: {
@@ -88,16 +87,6 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
         }
       }
     ]
-  }
-}
-
-// Redis Enterprise Contributor ロールをプリンシパルに割り当て（開発者アクセス用）
-resource redisContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
-  name: guid(redisEnterprise.id, principalId, 'f7f8cfd5-57b3-4a05-b8a5-26a1aa2cf7c5')
-  scope: redisEnterprise
-  properties: {
-    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', 'f7f8cfd5-57b3-4a05-b8a5-26a1aa2cf7c5')
-    principalId: principalId
   }
 }
 

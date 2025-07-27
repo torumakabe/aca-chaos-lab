@@ -2,13 +2,18 @@
 
 import os
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.azd_env import get_azd_env_value
 
 
 class Settings(BaseSettings):
     """Application settings."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
     
     # Application settings
     app_port: int = 8000
@@ -29,7 +34,3 @@ class Settings(BaseSettings):
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
         os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
     )
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"

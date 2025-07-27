@@ -38,7 +38,7 @@ case "$SCENARIO" in
         echo -e "${YELLOW}📊 Running baseline performance test...${NC}"
         echo "Configuration: 10 users, 5 minutes"
         
-        locust \
+        uv run locust \
             --locustfile locustfile.py \
             --host "$HOST" \
             --users 10 \
@@ -54,7 +54,7 @@ case "$SCENARIO" in
         echo -e "${YELLOW}💪 Running stress test...${NC}"
         echo "Configuration: Ramping up to 300 users over 15 minutes"
         
-        locust \
+        uv run locust \
             --locustfile scenarios/stress.py \
             --host "$HOST" \
             --headless \
@@ -66,7 +66,7 @@ case "$SCENARIO" in
         echo -e "${YELLOW}⚡ Running spike test...${NC}"
         echo "Configuration: 100 users spawned at 50/second"
         
-        locust \
+        uv run locust \
             --locustfile locustfile.py \
             --host "$HOST" \
             --users 100 \
@@ -91,7 +91,7 @@ case "$SCENARIO" in
             exit 0
         fi
         
-        locust \
+        uv run locust \
             --locustfile locustfile.py \
             --host "$HOST" \
             --users 50 \

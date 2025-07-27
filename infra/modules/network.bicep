@@ -7,7 +7,7 @@ var containerAppsSubnetPrefix = '10.0.0.0/23'
 var privateEndpointSubnetPrefix = '10.0.2.0/24'
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
-  name: '${vnetName}-containerApps-nsg'
+  name: 'nsg-${vnetName}-chaos'
   location: location
   tags: tags
   properties: {
@@ -32,9 +32,6 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         name: 'containerApps'
         properties: {
           addressPrefix: containerAppsSubnetPrefix
-          networkSecurityGroup: {
-            id: nsg.id
-          }
           delegations: [
             {
               name: 'Microsoft.App.environments'
@@ -50,6 +47,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         properties: {
           addressPrefix: privateEndpointSubnetPrefix
           privateEndpointNetworkPolicies: 'Disabled'
+          networkSecurityGroup: {
+            id: nsg.id
+          }
         }
       }
     ]
