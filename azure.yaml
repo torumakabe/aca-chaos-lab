@@ -8,3 +8,6 @@ services:
     project: ./src
     language: python
     host: containerapp
+    docker:
+      path: ./Dockerfile
+      registry: ${AZURE_CONTAINER_REGISTRY_LOGIN_SERVER}

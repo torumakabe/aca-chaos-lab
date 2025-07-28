@@ -36,8 +36,8 @@ resource redisEnterpriseDatabase 'Microsoft.Cache/redisEnterprise/databases@2024
 }
 
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
-  name: 'privatelink.redisenterprise.cache.azure.net'
-  location: 'global'
+  name: 'privatelink.redis.azure.net'
+  location: 'global'  
   tags: tags
 }
 

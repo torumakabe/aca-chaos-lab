@@ -7,13 +7,14 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source the azd environment helper
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/azd-env-helper.sh"
 
 # Load environment from azd if available
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "$RESOURCE_GROUP" ] && [ -n "$NSG_NAME" ]; then
+if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${NSG_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
 elif [ $# -lt 2 ]; then
@@ -56,11 +57,11 @@ fi
 
 # Count rules
 RULE_COUNT=$(echo "$CHAOS_RULES" | wc -l)
-echo -e "${YELLOW}Found $RULE_COUNT chaos rule(s) to remove${NC}"
+echo -e "${YELLOW}Found ${RULE_COUNT} chaos rule(s) to remove${NC}"
 
 # Remove each rule
 while IFS= read -r RULE_NAME; do
-    echo -e "${YELLOW}❌ Removing rule: $RULE_NAME${NC}"
+    echo -e "${YELLOW}❌ Removing rule: ${RULE_NAME}${NC}"
     az network nsg rule delete \
         --resource-group "$RESOURCE_GROUP" \
         --nsg-name "$NSG_NAME" \

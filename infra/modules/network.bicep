@@ -3,7 +3,7 @@ param tags object
 param vnetName string
 
 var vnetAddressPrefix = '10.0.0.0/16'
-var containerAppsSubnetPrefix = '10.0.0.0/23'
+var containerAppsSubnetPrefix = '10.0.1.0/24'
 var privateEndpointSubnetPrefix = '10.0.2.0/24'
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {

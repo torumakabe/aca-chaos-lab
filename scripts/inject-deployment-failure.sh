@@ -7,13 +7,14 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source the azd environment helper
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/azd-env-helper.sh"
 
 # Load environment from azd if available
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "$RESOURCE_GROUP" ] && [ -n "$CONTAINER_APP_NAME" ]; then
+if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${CONTAINER_APP_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
     APP_NAME="$CONTAINER_APP_NAME"
@@ -74,7 +75,7 @@ case "$FAILURE_TYPE" in
             --revision-suffix "$REVISION_SUFFIX" \
             --output none
         ;;
-    
+
     "bad-env")
         echo -e "${YELLOW}💥 Creating revision with invalid environment variable...${NC}"
         az containerapp update \
@@ -84,7 +85,7 @@ case "$FAILURE_TYPE" in
             --revision-suffix "$REVISION_SUFFIX" \
             --output none
         ;;
-    
+
     "oom")
         echo -e "${YELLOW}💥 Creating revision with insufficient memory...${NC}"
         az containerapp update \
@@ -95,9 +96,9 @@ case "$FAILURE_TYPE" in
             --revision-suffix "$REVISION_SUFFIX" \
             --output none
         ;;
-    
+
     *)
-        echo -e "${RED}❌ Unknown failure type: $FAILURE_TYPE${NC}"
+        echo -e "${RED}❌ Unknown failure type: ${FAILURE_TYPE}${NC}"
         echo "Valid types: nonexistent-image, bad-env, oom"
         exit 1
         ;;

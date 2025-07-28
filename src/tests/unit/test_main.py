@@ -20,7 +20,7 @@ def test_root_endpoint_without_redis(client):
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Hello from Container Apps Chaos Lab"
-        assert data["redis_data"] is None
+        assert data["redis_data"] == "Redis unavailable"
         assert "timestamp" in data
 
 

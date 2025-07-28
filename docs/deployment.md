@@ -65,6 +65,19 @@ azd up
 # 4. Container Appsへのアプリケーションデプロイ
 ```
 
+### 実際のデプロイ結果（2025年7月28日検証）
+
+```
+Deploying services (azd deploy)
+
+  (✓) Done: Deploying service app
+  - Endpoint: https://ca-app-wjrjbjnb4etie.wittysand-98a6c05f.japaneast.azurecontainerapps.io/
+
+SUCCESS: Your application was provisioned and deployed to Azure
+```
+
+デプロイ時間: 約10-15分（初回）
+
 ## ステップ4: Redisアクセスの設定
 
 デプロイ後、Redis Enterpriseのアクセスを手動で設定する必要があります：
@@ -91,9 +104,30 @@ azd up
    curl https://<your-app>.azurecontainerapps.io/health
    ```
 
+   期待される応答：
+   ```json
+   {
+     "status": "healthy",
+     "redis": {
+       "connected": true,
+       "latency_ms": 2
+     },
+     "timestamp": "2025-07-28T08:54:03.671855+00:00"
+   }
+   ```
+
 3. Redis接続を確認：
    ```bash
    curl https://<your-app>.azurecontainerapps.io/
+   ```
+
+   期待される応答：
+   ```json
+   {
+     "message": "Hello from Container Apps Chaos Lab",
+     "redis_data": "Data created at 2025-07-28T05:13:39.317321+00:00",
+     "timestamp": "2025-07-28T08:54:11.928616+00:00"
+   }
    ```
 
 ## ステップ6: モニタリングの設定

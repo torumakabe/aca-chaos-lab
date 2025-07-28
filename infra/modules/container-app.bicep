@@ -8,6 +8,7 @@ param redisHost string
 param applicationInsightsConnectionString string
 param managedIdentityName string
 param managedIdentityClientId string
+param containerRegistryName string
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
   name: managedIdentityName
@@ -17,10 +18,14 @@ resource containerAppsEnvironment 'Microsoft.App/managedEnvironments@2025-01-01'
   name: containerAppsEnvironmentName
 }
 
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: containerRegistryName
+}
+
 resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
   name: containerAppName
   location: location
-  tags: tags
+  tags: union(tags, { 'azd-service-name': 'app' })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -38,7 +43,7 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
       registries: [
         {
           identity: managedIdentity.id
-          server: split(containerImage, '/')[0]
+          server: containerRegistry.properties.loginServer
         }
       ]
       secrets: [
@@ -54,8 +59,8 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
           name: 'app'
           image: containerImage
           resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
+            cpu: json('0.25')
+            memory: '0.5Gi'
           }
           env: [
             {
@@ -111,7 +116,7 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 10
+        maxReplicas: 1
         rules: [
           {
             name: 'cpu-rule'

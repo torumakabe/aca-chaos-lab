@@ -63,7 +63,7 @@ if [ -z "$LAST_WORKING_REVISION" ]; then
     fi
 fi
 
-echo -e "${GREEN}✅ Found working revision: $LAST_WORKING_REVISION${NC}"
+echo -e "${GREEN}✅ Found working revision: ${LAST_WORKING_REVISION}${NC}"
 
 # Activate the working revision and deactivate chaos revisions
 echo -e "${YELLOW}🚀 Activating working revision...${NC}"

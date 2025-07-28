@@ -32,7 +32,6 @@ env.bak/
 venv.bak/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -80,3 +79,6 @@ uv.lock
 # Claude
 .claude/
 CLAUDE.md
+
+# test
+results/

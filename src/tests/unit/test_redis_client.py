@@ -46,20 +46,23 @@ async def test_connect_success(redis_client_instance, mock_azure_credential):
     """Test successful Redis connection."""
     redis_client_instance.credential = mock_azure_credential
     
-    with patch("redis.asyncio.Redis") as mock_redis_class:
+    with patch("redis.asyncio.from_url") as mock_from_url:
         mock_redis = AsyncMock()
-        mock_redis_class.return_value = mock_redis
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+        mock_from_url.side_effect = async_from_url
         
-        await redis_client_instance.connect()
+        with patch.dict("os.environ", {"AZURE_CLIENT_ID": "test-client-id"}):
+            await redis_client_instance.connect()
         
         # Verify Redis client was created with correct parameters
-        mock_redis_class.assert_called_once()
-        call_kwargs = mock_redis_class.call_args.kwargs
-        assert call_kwargs["host"] == "test.redis.azure.com"
-        assert call_kwargs["port"] == 10000
-        assert call_kwargs["ssl"] is True
-        assert call_kwargs["username"] == "mock_token"
-        assert call_kwargs["password"] == ""
+        mock_from_url.assert_called_once()
+        call_args = mock_from_url.call_args
+        assert "rediss://test.redis.azure.com:10000" in call_args[0]
+        call_kwargs = mock_from_url.call_args.kwargs
+        assert call_kwargs["username"] == "test-client-id"
+        assert call_kwargs["password"] == "mock_token"
+        assert call_kwargs["decode_responses"] is True
         
         # Verify ping was called
         mock_redis.ping.assert_called_once()
@@ -70,25 +73,28 @@ async def test_connect_failure(redis_client_instance, mock_azure_credential):
     """Test Redis connection failure."""
     redis_client_instance.credential = mock_azure_credential
     
-    with patch("redis.asyncio.Redis") as mock_redis_class:
+    with patch("redis.asyncio.from_url") as mock_from_url:
         mock_redis = AsyncMock()
         mock_redis.ping.side_effect = redis.ConnectionError("Connection failed")
-        mock_redis_class.return_value = mock_redis
+        async def async_from_url(*args, **kwargs):
+            return mock_redis
+        mock_from_url.side_effect = async_from_url
         
-        with pytest.raises(Exception) as exc_info:
-            await redis_client_instance.connect()
+        with patch.dict("os.environ", {"AZURE_CLIENT_ID": "test-client-id"}):
+            with pytest.raises(Exception) as exc_info:
+                await redis_client_instance.connect()
         
         assert "Failed to connect to Redis" in str(exc_info.value)
-        # close is called in the exception handler
-        mock_redis.close.assert_called_once()
+        # aclose is called in the exception handler
+        mock_redis.aclose.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_get_operation(redis_client_instance):
     """Test Redis get operation."""
     mock_redis = AsyncMock()
-    # Redis returns bytes, not strings
-    mock_redis.get.return_value = b"test_value"
+    # With decode_responses=True, Redis returns strings
+    mock_redis.get.return_value = "test_value"
     redis_client_instance.client = mock_redis
     
     result = await redis_client_instance.get("test_key")
@@ -126,8 +132,8 @@ async def test_operation_with_reconnect(redis_client_instance, mock_azure_creden
     redis_client_instance.credential = mock_azure_credential
     
     mock_redis = AsyncMock()
-    # First call fails with connection error, second returns bytes
-    mock_redis.get.side_effect = [redis.ConnectionError("Lost connection"), b"test_value"]
+    # First call fails with connection error, second returns string
+    mock_redis.get.side_effect = [redis.ConnectionError("Lost connection"), "test_value"]
     redis_client_instance.client = mock_redis
     
     with patch.object(redis_client_instance, "connect", new_callable=AsyncMock) as mock_connect:
@@ -146,7 +152,7 @@ async def test_close(redis_client_instance, mock_azure_credential):
     
     await redis_client_instance.close()
     
-    mock_redis.close.assert_called_once()
+    mock_redis.aclose.assert_called_once()
     mock_azure_credential.close.assert_called_once()
     assert redis_client_instance.client is None
     assert redis_client_instance.credential is None

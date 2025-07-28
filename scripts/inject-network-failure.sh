@@ -7,13 +7,14 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source the azd environment helper
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/azd-env-helper.sh"
 
 # Load environment from azd if available
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "$RESOURCE_GROUP" ] && [ -n "$NSG_NAME" ]; then
+if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${NSG_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
     DURATION="60"
@@ -69,23 +70,25 @@ echo "Rule name: $RULE_NAME"
 # If duration is specified and not 0, schedule removal
 if [ "$DURATION" -gt 0 ]; then
     echo -e "${YELLOW}⏰ Scheduling rule removal in ${DURATION}s...${NC}"
-    
+
     # Create a background job to remove the rule after duration
-    (
-        sleep "$DURATION"
-        echo -e "${YELLOW}🔧 Removing network failure rule...${NC}"
+    # Use nohup and redirect all I/O to prevent terminal interaction
+    nohup bash -c "
+        sleep $DURATION
+        echo -e '${YELLOW}🔧 Removing network failure rule...${NC}'
         az network nsg rule delete \
-            --resource-group "$RESOURCE_GROUP" \
-            --nsg-name "$NSG_NAME" \
-            --name "$RULE_NAME" \
+            --resource-group '$RESOURCE_GROUP' \
+            --nsg-name '$NSG_NAME' \
+            --name '$RULE_NAME' \
             --output none
-        echo -e "${GREEN}✅ Network failure cleared!${NC}"
-    ) &
-    
+        echo -e '${GREEN}✅ Network failure cleared!${NC}'
+    " > "/tmp/chaos-cleanup-$RULE_NAME.log" 2>&1 &
+
     CLEANUP_PID=$!
     echo "Cleanup scheduled (PID: $CLEANUP_PID)"
     echo -e "${YELLOW}💡 To remove the rule manually, run:${NC}"
     echo "az network nsg rule delete -g $RESOURCE_GROUP --nsg-name $NSG_NAME -n $RULE_NAME"
+    echo -e "${YELLOW}📝 Cleanup log: /tmp/chaos-cleanup-${RULE_NAME}.log${NC}"
 else
     echo -e "${YELLOW}⚠️  Rule will remain until manually removed${NC}"
     echo -e "${YELLOW}💡 To remove the rule, run:${NC}"

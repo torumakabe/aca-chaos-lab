@@ -9,6 +9,12 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
+@description('The image name for the app service')
+param serviceAppImageName string = 'mcr.microsoft.com/k8se/quickstart:latest'
+
+@description('Principal ID of the user running deployment (for ACR push access)')
+param principalId string = ''
+
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = {
@@ -75,6 +81,7 @@ module containerRegistry './modules/container-registry.bicep' = {
     vnetId: network.outputs.vnetId
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
     managedIdentityPrincipalId: managedIdentity.outputs.managedIdentityPrincipalId
+    currentUserPrincipalId: principalId
   }
 }
 
@@ -98,11 +105,12 @@ module containerApp './modules/container-app.bicep' = {
     tags: tags
     containerAppName: '${abbrs.appContainerApps}app-${resourceToken}'
     containerAppsEnvironmentName: containerAppsEnvironment.outputs.environmentName
-    containerImage: '${containerRegistry.outputs.loginServer}/chaos-lab-app:latest'
+    containerImage: serviceAppImageName
     redisHost: redis.outputs.redisHost
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     managedIdentityName: managedIdentity.outputs.managedIdentityName
     managedIdentityClientId: managedIdentity.outputs.managedIdentityClientId
+    containerRegistryName: containerRegistry.outputs.registryName
   }
 }
 

@@ -39,7 +39,7 @@ CHAOS_RULES=$(az network nsg rule list \
     --query "[?starts_with(name, 'chaos-')].{Name:name, Priority:priority, Access:access, Direction:direction, Protocol:protocol, DestinationPortRanges:destinationPortRanges[0], Description:description}" \
     --output json)
 
-if [ "$CHAOS_RULES" == "[]" ]; then
+if [ "$CHAOS_RULES" = "[]" ]; then
     echo -e "${GREEN}✅ No chaos rules found${NC}"
     exit 0
 fi
@@ -58,4 +58,4 @@ Rule: \(.Name)
 
 # Count rules
 RULE_COUNT=$(echo "$CHAOS_RULES" | jq '. | length')
-echo -e "${BLUE}Total chaos rules: $RULE_COUNT${NC}"
+echo -e "${BLUE}Total chaos rules: ${RULE_COUNT}${NC}"

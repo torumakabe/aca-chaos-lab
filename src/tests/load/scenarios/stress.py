@@ -3,6 +3,7 @@
 from locust import HttpUser, between, task, LoadTestShape
 import math
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +11,14 @@ logger = logging.getLogger(__name__)
 class StressTestUser(HttpUser):
     """User for stress testing - similar to baseline but with variable wait times."""
     
-    wait_time = between(0.5, 2)  # Variable wait time
+    def wait_time(self):
+        """Custom wait time implementation with error backoff."""
+        if hasattr(self, 'consecutive_errors') and self.consecutive_errors > 5:
+            # Back off when experiencing errors
+            return random.uniform(2, 5)
+        else:
+            # Normal wait time
+            return random.uniform(0.5, 2)
     
     def on_start(self):
         """Initialize user session."""
@@ -30,13 +38,11 @@ class StressTestUser(HttpUser):
                 self.error_count += 1
                 self.consecutive_errors += 1
                 
-                # If too many consecutive errors, back off
+                # Log if too many consecutive errors
                 if self.consecutive_errors > 5:
                     logger.warning(f"Too many consecutive errors ({self.consecutive_errors}), backing off")
-                    self.wait_time = between(2, 5)
             else:
                 self.consecutive_errors = 0
-                self.wait_time = between(0.5, 2)  # Reset to normal
                 
                 # Still verify response structure
                 try:

@@ -24,6 +24,8 @@ class ChaosLabUser(HttpUser):
                 data = response.json()
                 if data.get("status") == "unhealthy":
                     response.failure("Health check returned unhealthy status")
+            elif response.status_code == 0:
+                response.failure("Health check failed with status 0 - Connection error or timeout")
             else:
                 response.failure(f"Health check failed with status {response.status_code}")
     
@@ -39,6 +41,8 @@ class ChaosLabUser(HttpUser):
                     response.success()
                 else:
                     response.success()
+            elif response.status_code == 0:
+                response.failure("Main endpoint failed with status 0 - Connection error or timeout")
             else:
                 response.failure(f"Main endpoint failed with status {response.status_code}")
     
@@ -51,6 +55,8 @@ class ChaosLabUser(HttpUser):
                 self.chaos_active = data.get("load", {}).get("active", False) or \
                                    data.get("hang", {}).get("active", False)
                 response.success()
+            elif response.status_code == 0:
+                response.failure("Chaos status check failed with status 0 - Connection error or timeout")
             else:
                 response.failure(f"Chaos status check failed with status {response.status_code}")
     

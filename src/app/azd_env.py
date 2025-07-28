@@ -8,11 +8,11 @@ from typing import Any
 
 def get_azd_env_value(key: str, default: Any = None) -> Any:
     """Get environment value from azd if available, otherwise from OS environment.
-    
+
     Args:
         key: Environment variable key
         default: Default value if not found
-        
+
     Returns:
         The environment value or default
     """
@@ -20,7 +20,7 @@ def get_azd_env_value(key: str, default: Any = None) -> Any:
     azd_path = shutil.which("azd")
     if not azd_path:
         return os.getenv(key, default)
-    
+
     # Try to get from azd
     try:
         result = subprocess.run(  # noqa: S603
@@ -28,14 +28,14 @@ def get_azd_env_value(key: str, default: Any = None) -> Any:
             capture_output=True,
             text=True,
             check=False,
-            timeout=10  # Add timeout for safety
+            timeout=10,  # Add timeout for safety
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except (subprocess.SubprocessError, subprocess.TimeoutExpired, FileNotFoundError):
         # azd not available or error occurred
         pass
-    
+
     # Fall back to OS environment
     return os.getenv(key, default)
 
@@ -45,14 +45,14 @@ def is_azd_available() -> bool:
     azd_path = shutil.which("azd")
     if not azd_path:
         return False
-        
+
     try:
         result = subprocess.run(  # noqa: S603
             [azd_path, "--version"],
             capture_output=True,
             text=True,
             check=False,
-            timeout=5  # Add timeout for safety
+            timeout=5,  # Add timeout for safety
         )
         return result.returncode == 0
     except (subprocess.SubprocessError, subprocess.TimeoutExpired, FileNotFoundError):

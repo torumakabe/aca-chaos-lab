@@ -49,3 +49,6 @@ dist/
 # pyproject.toml is not needed in production
 pyproject.toml
 uv.lock
+
+# Development tools
+Makefile
