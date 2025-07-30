@@ -676,6 +676,8 @@ except Exception as e:
 
 | 変数名 | 説明 | デフォルト値 |
 |--------|------|------------|
+| `REDIS_ENABLED` | Redis接続を有効化 | true |
+| `REDIS_SSL` | Redis SSL接続を有効化 | true |
 | `REDIS_MAX_CONNECTIONS` | 接続プール最大接続数 | 50 |
 | `REDIS_SOCKET_TIMEOUT` | ソケットタイムアウト（秒） | 3 |
 | `REDIS_SOCKET_CONNECT_TIMEOUT` | 接続タイムアウト（秒） | 3 |
