@@ -5,6 +5,8 @@ tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'githubRepo',
 ---
 # 仕様駆動ワークフロー v1
 
+[オリジナル](https://github.com/github/awesome-copilot/blob/main/instructions/spec-driven-workflow-v1.instructions.md)
+
 **仕様駆動ワークフロー:**
 要件と実装の間のギャップを埋める。
 
