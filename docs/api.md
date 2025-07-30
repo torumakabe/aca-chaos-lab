@@ -336,6 +336,7 @@ Content-Type: application/json
 - `200 OK` - 成功
 - `400 Bad Request` - 無効なリクエストパラメータ
 - `409 Conflict` - 操作が現在の状態と競合
+- `503 Service Unavailable` - Redis接続エラーまたはサービス利用不可
 - `500 Internal Server Error` - 予期しないサーバーエラー
 
 ### 標準エラーレスポンス形式
@@ -377,6 +378,16 @@ Content-Type: application/json
   "detail": "Load simulation already active",
   "timestamp": "2025-07-29T10:30:00Z",
   "request_id": "req-67890"
+}
+```
+
+#### 503 Service Unavailable
+```json
+{
+  "error": "Service Unavailable",
+  "detail": "Redis connection failed",
+  "timestamp": "2025-07-29T10:30:00Z",
+  "request_id": "req-54321"
 }
 ```
 
