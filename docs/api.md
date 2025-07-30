@@ -259,7 +259,7 @@ Content-Type: application/json
 
 | フィールド | 型 | 必須 | 説明 |
 |------------|-----|------|------|
-| force | boolean | いいえ | 強制的にリセット（デフォルト: false） |
+| force | boolean | いいえ | 強制的にリセット（デフォルト: true） |
 
 #### レスポンス
 
