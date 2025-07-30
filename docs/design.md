@@ -276,7 +276,7 @@ class ChaosState:
 |--------------|--------------|----------------|-----|
 | Redis接続失敗 | 503 | "Redis connection failed" | リトライ後、デグレード動作 |
 | Redis認証失敗 | 503 | "Redis authentication failed" | トークン再取得、エラーログ |
-| Redis タイムアウト | 504 | "Redis operation timeout" | タイムアウト値調整、エラーログ |
+| Redis タイムアウト | 503 | "Redis operation timeout" | タイムアウト値調整、エラーログ |
 | 不正な負荷レベル | 400 | "Invalid load level" | 有効な値を返す |
 | 内部エラー | 500 | "Internal server error" | スタックトレース記録 |
 | ハングアップ中 | - | - | レスポンスなし |
@@ -304,7 +304,7 @@ except TimeoutError:
     # タイムアウト
     logger.error("Redis operation timeout")
     return JSONResponse(
-        status_code=504,
+        status_code=503,
         content={"error": "Redis operation timeout"}
     )
 except Exception as e:
