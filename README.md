@@ -81,7 +81,7 @@ graph TB
 
 3. **アプリケーションハング**
    - 一時的または永続的な無応答状態
-   - ブロッキング操作のシミュレーション
+   - 呼び出したリクエストのみが応答を返さない（他のAPIは正常動作）
 
 4. **Redis接続リセット**
    - Redis接続の強制切断
@@ -380,9 +380,11 @@ cd ..
 | `REDIS_ENABLED` | Redis接続を有効化 | true | - |
 | `REDIS_SSL` | Redis SSL接続を有効化 | true | - |
 | `REDIS_MAX_CONNECTIONS` | Redis接続プール最大接続数 | 50 | - |
-| `REDIS_SOCKET_TIMEOUT` | Redisソケットタイムアウト（秒） | 5 | - |
-| `REDIS_SOCKET_CONNECT_TIMEOUT` | Redisソケット接続タイムアウト（秒） | 5 | - |
-| `REDIS_RETRY_ON_TIMEOUT` | タイムアウト時のリトライを有効化 | true | - |
+| `REDIS_SOCKET_TIMEOUT` | Redisソケットタイムアウト（秒） | 3 | - |
+| `REDIS_SOCKET_CONNECT_TIMEOUT` | Redisソケット接続タイムアウト（秒） | 3 | - |
+| `REDIS_MAX_RETRIES` | Redis最大リトライ回数 | 1 | - |
+| `REDIS_BACKOFF_BASE` | Redis指数バックオフベース時間（秒） | 1 | - |
+| `REDIS_BACKOFF_CAP` | Redis指数バックオフ上限時間（秒） | 3 | - |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights接続文字列 | なし | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 | `LOG_LEVEL` | アプリケーションログレベル | INFO | - |
 | `APP_PORT` | アプリケーションポート | 8000 | - |
@@ -391,16 +393,13 @@ cd ..
 
 ### azd環境変数
 
-`azd up`の後、以下の環境変数が利用可能です：
-
-**実行場所：プロジェクトルートディレクトリ** (`aca-chaos-lab/`)
+azdが管理する環境変数の確認と取得：
 
 ```bash
-# プロジェクトルートディレクトリで実行
 # 環境変数の一覧表示
 azd env get-values
 
-# 特定の値を取得
+# 特定の値を取得（例）
 azd env get-value AZURE_CONTAINER_APP_URI
 azd env get-value AZURE_RESOURCE_GROUP
 azd env get-value AZURE_CONTAINER_APP_NAME
@@ -446,15 +445,6 @@ azd up
   - 時限的ハング（duration指定）を使用
   - 別のターミナルから状態確認API（/chaos/status）で確認
 
-### パフォーマンス
-
-#### 初回リクエストの遅延
-- **症状**: コールドスタート後の最初のリクエストが遅い
-- **原因**: Container Appsのコンテナ起動とRedis接続確立
-- **対処**: 
-  - ウォームアップリクエストを送信
-  - 最小インスタンス数を1以上に設定
-
 ## アラート設定
 
 Container Appsの応答状況を監視するための自動アラートが設定されています：
@@ -478,7 +468,7 @@ Container Appsの応答状況を監視するための自動アラートが設定
    - `{container-app-name}-5xx-alerts`
    - `{container-app-name}-response-time-alerts`
 
-**注意**: 現在アクショングループは設定されていません。メール通知などが必要な場合は、Azure Portalからアクショングループを追加してください。
+**注意**: Azure SRE Agentとの統合を想定しているため、現在アクショングループは設定されていません。メール通知などが必要な場合は、Azure Portalからアクショングループを追加してください。
 
 ## セキュリティ考慮事項
 
@@ -488,8 +478,8 @@ Container Appsの応答状況を監視するための自動アラートが設定
   - トークンの自動更新により、期限切れによる接続エラーを防止
 - **ネットワークセキュリティ**
   - VNet統合によるプライベートネットワーク内での通信
-  - Private Endpointを使用してRedisとContainer Registryへの接続を保護
-  - NSGによる送信トラフィック制御（Private Endpointサブネット）
+  - Private Endpointを使用してRedisへの接続を保護
+  - Container RegistryはPrivate Endpointを持ちつつ、開発者の利便性のためパブリックアクセスも許可
 - **データ保護**
   - RedisへのSSL/TLS接続（ポート10000）
   - コード内にパスワードや接続文字列を含まない

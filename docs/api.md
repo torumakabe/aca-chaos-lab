@@ -322,6 +322,8 @@ Content-Type: application/json
 
 | 設定項目 | 環境変数 | デフォルト値 | 説明 |
 |----------|----------|------------|------|
+| 接続有効化 | REDIS_ENABLED | true | Redis接続を有効化 |
+| SSL接続 | REDIS_SSL | true | Redis SSL接続を有効化 |
 | 最大接続数 | REDIS_MAX_CONNECTIONS | 50 | 接続プールの最大接続数 |
 | ソケットタイムアウト | REDIS_SOCKET_TIMEOUT | 3秒 | 操作のタイムアウト |
 | 接続タイムアウト | REDIS_SOCKET_CONNECT_TIMEOUT | 3秒 | 接続確立のタイムアウト |
