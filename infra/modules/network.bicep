@@ -46,7 +46,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
         name: 'privateEndpoints'
         properties: {
           addressPrefix: privateEndpointSubnetPrefix
-          privateEndpointNetworkPolicies: 'Disabled'
+          privateEndpointNetworkPolicies: 'Enabled'
           networkSecurityGroup: {
             id: nsg.id
           }

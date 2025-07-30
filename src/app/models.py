@@ -1,5 +1,6 @@
 """Pydantic models for API requests and responses."""
 
+
 from pydantic import BaseModel
 
 
@@ -40,8 +41,32 @@ class HangRequest(BaseModel):
     duration_seconds: int = 0  # 0 means permanent
 
 
+class RedisResetRequest(BaseModel):
+    """Redis connection reset request model."""
+
+    force: bool = True
+
+
+class RedisResetResponse(BaseModel):
+    """Redis connection reset response model."""
+
+    status: str
+    connections_closed: int
+    timestamp: str
+
+
 class ChaosStatusResponse(BaseModel):
     """Chaos status response model."""
 
     load: dict[str, bool | str | int]
     hang: dict[str, bool | int]
+    redis: dict[str, bool | int | str | None]
+
+
+class ErrorResponse(BaseModel):
+    """Standardized error response model."""
+
+    error: str
+    detail: str | None = None
+    timestamp: str
+    request_id: str | None = None

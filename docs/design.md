@@ -1,5 +1,11 @@
 # Azure Container Apps Chaos Lab - 技術設計書
 
+## 更新履歴
+- 2025-07-25: 初版作成
+- 2025-07-28: 実装に合わせて更新（サブネット構成、Redisポート、マネージドID）
+- 2025-07-30: Redis接続リセット機能の設計追加
+- 2025-07-30: Container Apps応答監視アラート設計追加
+
 ## アーキテクチャ概要
 
 ### システムコンポーネント
@@ -67,13 +73,13 @@
 
 #### VNet構成
 - **アドレス空間**: 10.0.0.0/16
-- **Container Apps サブネット**: 10.0.0.0/23 (512 IPs)
+- **Container Apps サブネット**: 10.0.1.0/24 (256 IPs)
 - **Private Endpoint サブネット**: 10.0.2.0/24 (256 IPs)
 
 #### NSG設計
+- **適用対象**: Private Endpoint サブネットのみ（Container Appsサブネットには適用しない）
 - **通常時ルール**:
-  - Inbound: Container Apps管理トラフィックを許可
-  - Outbound: インターネット、Redis、監視サービスへの通信を許可
+  - デフォルトルールのみ（送信は許可）
 - **障害注入時ルール**:
   - Redis向けの通信を動的にDENY（優先度100）
   - ルール名: "DenyRedisTraffic"
@@ -81,14 +87,15 @@
 ### 認証設計
 
 #### Managed Identity
-- Container AppにSystem Assigned Managed Identityを有効化
-- Redis Data Ownerロールを付与
-- Application InsightsへのメトリクスPublisherロールを付与
+- Container AppにUser Assigned Managed Identityを使用
+- Container Registry Pullロールを付与（AcrPull）
+- Redisアクセスポリシーを付与
 
 #### Redis Entra ID認証
-- Entra ID認証を有効化
-- パスワード認証を無効化
-- Container AppのManaged IdentityにRedis Data Ownerロールを付与
+- Azure Managed Redis（Redis Enterprise）を使用
+- Entra ID認証を有効化（アクセスポリシー経由）
+- パスワード認証は使用しない
+- Container AppのManaged Identityにdefaultアクセスポリシーを付与
 
 ### データフロー
 
@@ -120,6 +127,16 @@
 3. Container App → Redis (高頻度アクセス、Entra ID認証)
 4. Container App → Application Insights (高負荷メトリクス)
 5. Container App → Locust (レスポンス時間劣化)
+```
+
+#### Redis接続リセット時のフロー
+```
+1. クライアント → Container Apps Ingress (HTTPS)
+2. Ingress → Container App
+3. Container App → Redis接続プール (既存接続をクローズ)
+4. Container App → Application Insights (リセットイベント記録)
+5. Container App → クライアント (リセット完了応答)
+6. 次回Redis操作時 → 新規接続確立
 ```
 
 ## インターフェース定義
@@ -185,6 +202,24 @@ Content-Type: application/json
 ```
 **レスポンス**: なし（ハングアップするため）
 
+#### Redis接続リセットエンドポイント
+```http
+POST /chaos/redis-reset
+Content-Type: application/json
+
+{
+  "force": true|false  // オプション: 強制切断フラグ（デフォルト: true）
+}
+```
+**レスポンス**:
+```json
+{
+  "status": "redis_connections_reset",
+  "connections_closed": 3,
+  "timestamp": "2025-07-30T12:00:00Z"
+}
+```
+
 #### ステータス確認エンドポイント
 ```http
 GET /chaos/status
@@ -200,6 +235,11 @@ GET /chaos/status
   "hang": {
     "active": true|false,
     "remaining_seconds": 0
+  },
+  "redis": {
+    "connected": true|false,
+    "connection_count": 3,
+    "last_reset": "2025-07-30T12:00:00Z"
   }
 }
 ```
@@ -225,6 +265,7 @@ class ChaosState:
     load_end_time: Optional[datetime] = None
     hang_active: bool = False
     hang_end_time: Optional[datetime] = None
+    redis_last_reset: Optional[datetime] = None
 ```
 
 ## エラー処理
@@ -303,11 +344,16 @@ except Exception as e:
    - 時限的ハング
    - 状態管理
 
+5. **Redis接続リセット機能**
+   - 接続プールの切断
+   - 接続状態の確認
+   - 自動再接続
+
 ### モックストラテジー
-- Redis接続: redis-py-mockを使用
-- Entra ID認証: azure-identityのモック
-- 時刻: freezegunを使用
-- HTTPクライアント: httpxのモック機能を使用
+- Redis接続: AsyncMockを使用したカスタムモック
+- Entra ID認証: azure-identityのDefaultAzureCredentialをモック
+- 時刻: asyncio.sleepのモック
+- HTTPクライアント: httpxのAsyncClientモック
 
 ## セキュリティ考慮事項
 
@@ -336,10 +382,10 @@ except Exception as e:
   - スケールルール: CPU使用率70%
 
 ### Redis接続プール
-- 接続プール最大サイズ: 50
-- 接続タイムアウト: 5秒
-- コマンドタイムアウト: 2秒
-- トークンキャッシュ: 30分
+- 接続プール管理: redis-pyの自動管理
+- 接続ポート: 10000（Azure Managed Redisのデフォルト）
+- SSL/TLS: 有効（必須）
+- トークンキャッシュ: DefaultAzureCredentialによる自動管理
 
 ### 負荷特性
 - **アプリケーション内部負荷**:
@@ -362,8 +408,8 @@ except Exception as e:
 - **言語**: Python 3.13
 - **Webフレームワーク**: FastAPI
 - **非同期処理**: asyncio
-- **Redisクライアント**: redis-py (async) + azure-identity
-- **監視**: Azure Application Insights SDK
+- **Redisクライアント**: redis (v6.2.0) + azure-identity
+- **監視**: Azure Monitor OpenTelemetry (v1.6.12)
 - **パッケージ管理**: uv (開発環境のみ)
 
 ### 開発ツール
@@ -391,15 +437,19 @@ aca-chaos-lab/
 ├── tests/             # テストコード
 │   └── locust/        # Locustシナリオ
 └── scripts/           # 運用スクリプト
-    ├── inject-failure.sh
-    ├── restore-normal.sh
-    └── run-load-test.sh
+    ├── inject-network-failure.sh
+    ├── clear-network-failures.sh
+    ├── list-network-failures.sh
+    ├── inject-deployment-failure.sh
+    ├── list-revisions.sh
+    └── azd-env-helper.sh
 ```
 
 ### 環境変数設計
 ```bash
 # Redis接続
-REDIS_HOST=<redis-name>.redis.cache.windows.net
+REDIS_HOST=<redis-name>.redis.azure.net
+REDIS_PORT=10000
 REDIS_SSL=true
 # パスワードは不要（Entra ID認証）
 
@@ -411,8 +461,8 @@ APP_PORT=8000
 LOG_LEVEL=INFO
 
 # Azure環境
-AZURE_TENANT_ID=<tenant-id>
 AZURE_CLIENT_ID=<managed-identity-client-id>
+# AZURE_TENANT_IDは不要（DefaultAzureCredentialが自動検出）
 ```
 
 ### 開発環境でのuv使用
@@ -445,7 +495,7 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "ASYNC", "S", "B", "A", "C4", "T20", "SIM"]
@@ -495,37 +545,143 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ### Redis Entra ID認証の実装
 
-```python
-from azure.identity import DefaultAzureCredential
-import redis.asyncio as redis
+#### 概要
 
-class RedisClient:
-    def __init__(self, host: str):
-        self.host = host
-        self.credential = DefaultAzureCredential()
-        self.client = None
-    
-    async def connect(self):
-        # Entra IDトークンを取得
-        token = self.credential.get_token(
-            "https://redis.azure.com/.default"
-        )
-        
-        # Redisクライアントを初期化
-        self.client = redis.Redis(
-            host=self.host,
-            port=6380,
-            ssl=True,
-            username=token.token,  # Entra IDトークンをユーザー名として使用
-            decode_responses=True
-        )
-    
-    async def get(self, key: str):
-        return await self.client.get(key)
-    
-    async def set(self, key: str, value: str):
-        return await self.client.set(key, value)
+本アプリケーションでは、redis-pyライブラリの標準的な機能を活用し、Azure Managed Redis（Redis Enterprise）への接続を実装しています。主な特徴：
+
+- **Entra ID認証**: DefaultAzureCredentialを使用したパスワードレス認証
+- **接続プール管理**: redis-pyの内部接続プールによる効率的な接続管理
+- **標準的なリトライ機構**: redis-pyのRetry/ExponentialBackoffを使用
+- **自動再接続**: 接続エラー時の自動的な再接続処理
+
+#### 接続管理の詳細
+
+##### 1. 起動時の接続処理
+
+```python
+# アプリケーション起動時（lifespan内）
+if settings.redis_enabled:
+    redis_client = RedisClient(settings.redis_host, settings.redis_port, settings)
+    try:
+        await redis_client.connect()
+        logger.info("Successfully connected to Redis at startup")
+    except Exception as e:
+        logger.warning(f"Failed to connect to Redis at startup: {e}")
+        logger.info("Redis connection will be retried on first use")
+        # 起動は継続 - 最初の操作時に再接続を試行
 ```
+
+**設計方針**:
+- 起動時の接続エラーでアプリケーションを停止させない
+- 設定ミスなど恒久的な問題は運用時に検知・修正
+- 一時的なネットワーク問題には自動的に対応
+
+##### 2. リトライメカニズム
+
+```python
+# redis-pyの標準的なリトライ設定
+retry_strategy = Retry(
+    backoff=ExponentialBackoff(base=backoff_base, cap=backoff_cap),
+    retries=max_retries
+)
+
+self.client = await redis.from_url(
+    f"rediss://{self.host}:{self.port}",
+    username=client_id,
+    password=token,
+    retry=retry_strategy,
+    retry_on_error=[redis.ConnectionError, redis.TimeoutError],
+    health_check_interval=30,
+)
+```
+
+**デフォルト設定**:
+- 最大リトライ回数: 1回
+- 指数バックオフ: 1秒ベース、3秒上限
+- ヘルスチェック間隔: 30秒
+- 対象エラー: ConnectionError, TimeoutError
+
+##### 3. 接続プール管理
+
+```python
+# 接続プール設定
+max_connections=50  # 最大接続数
+socket_timeout=3    # ソケットタイムアウト（秒）
+socket_connect_timeout=3  # 接続タイムアウト（秒）
+```
+
+**接続プールの動作**:
+- redis-pyが内部的に接続プールを管理
+- 接続の再利用により効率的なリソース使用
+- 自動的な接続の作成・破棄
+- ヘルスチェックによる不正な接続の検出・削除
+
+##### 4. 接続リセット機能
+
+```python
+async def reset_connections(self) -> int:
+    """Reset all Redis connections."""
+    async with self._connection_lock:
+        if self.client and hasattr(self.client, "connection_pool"):
+            # 接続プールのdisconnect()メソッドを使用
+            # これは標準的な接続リセット方法
+            closed_count = await pool.disconnect()
+            self._connection_count = 0
+            return closed_count
+```
+
+**リセット機能の特徴**:
+- 接続プールの`disconnect()`メソッドを使用（標準的な方法）
+- すべての既存接続を切断
+- 次回操作時に自動的に新規接続を確立
+- カオステスト用APIから呼び出し可能
+
+#### エラーハンドリング
+
+##### 1. 起動時のエラー
+
+```python
+# 起動時: エラーでも継続
+try:
+    await redis_client.connect()
+except Exception as e:
+    logger.warning(f"Failed to connect to Redis at startup: {e}")
+    # アプリケーションは起動を継続
+```
+
+##### 2. 実行時のエラー
+
+```python
+# 実行時: redis-pyがリトライを実行
+try:
+    redis_data = await redis_client.get(key)
+except Exception as e:
+    # リトライ後も失敗した場合
+    logger.error(f"Redis operation failed: {e}")
+    # HTTPステータス503を返す
+    return JSONResponse(status_code=503, ...)
+```
+
+##### 3. 接続リセット後の動作
+
+```python
+# リセット後: 自動再接続
+1. /chaos/redis-reset APIを呼び出し
+2. 既存の接続をすべて切断
+3. 次のRedis操作で自動的に新規接続を確立
+4. 一時的にエラーが発生する可能性があるが自動回復
+```
+
+#### 環境変数による設定
+
+| 変数名 | 説明 | デフォルト値 |
+|--------|------|------------|
+| `REDIS_MAX_CONNECTIONS` | 接続プール最大接続数 | 50 |
+| `REDIS_SOCKET_TIMEOUT` | ソケットタイムアウト（秒） | 3 |
+| `REDIS_SOCKET_CONNECT_TIMEOUT` | 接続タイムアウト（秒） | 3 |
+| `REDIS_MAX_RETRIES` | 最大リトライ回数 | 1 |
+| `REDIS_BACKOFF_BASE` | 指数バックオフベース時間（秒） | 1 |
+| `REDIS_BACKOFF_CAP` | 指数バックオフ最大時間（秒） | 3 |
 
 ## Locust負荷テスト設計
 
@@ -564,29 +720,209 @@ class RedisClient:
 - ヘルスチェック（GET /health）
 - Redis読み書き操作を含むAPI
 
-## 実装の優先順位
 
-1. **基本インフラ** (優先度: 高)
+## 実装状況（2025-07-28）
+
+すべての機能が実装済みで、本番環境で稼働中：
+
+1. **基本インフラ** ✅
    - VNet、サブネット、NSG
-   - Container Apps Environment
-   - Redis with Private Endpoint (Entra ID認証有効)
+   - Container Apps Environment（VNet統合）
+   - Azure Managed Redis（Redis Enterprise）with Private Endpoint
+   - User Assigned Managed Identity
 
-2. **基本アプリケーション** (優先度: 高)
+2. **基本アプリケーション** ✅
    - FastAPIベースのWebアプリ
    - Redis接続とヘルスチェック（Entra ID認証）
-   - Application Insights統合
+   - Azure Monitor OpenTelemetry統合
 
-3. **障害注入機能** (優先度: 中)
-   - NSGルール操作スクリプト
-   - 負荷シミュレーションAPI
-   - ハングアップAPI
+3. **障害注入機能** ✅
+   - NSGルール操作スクリプト（azd環境変数対応）
+   - 負荷シミュレーションAPI（/chaos/load）
+   - ハングアップAPI（/chaos/hang）
+   - ステータス確認API（/chaos/status）
 
-4. **負荷テストツール** (優先度: 中)
-   - Locustテストシナリオ
+4. **負荷テストツール** ✅
+   - Locustテストシナリオ（baseline、stress、spike、chaos）
    - 負荷テスト実行スクリプト
-   - 結果分析ツール
+   - 結果分析とレポート生成
 
-5. **運用ツール** (優先度: 低)
-   - 監視ダッシュボード
-   - ドキュメント整備
-   - CI/CDパイプライン
+5. **運用ツール** ✅
+   - Application Insightsダッシュボード
+   - 包括的なドキュメント
+   - Azure Developer CLI統合
+
+6. **Redis接続リセット機能** ✅ (2025-07-30追加)
+   - Redis接続リセットAPI（/chaos/redis-reset）
+   - 接続プールの標準的なdisconnect()メソッドを使用
+   - 自動再接続機能
+   - ネットワーク障害スクリプトとの統合
+
+## Container Apps応答監視アラート設計
+
+### アラートアーキテクチャ
+
+```mermaid
+graph TD
+    CA[Container App] -->|Generates Metrics| M[Azure Monitor Metrics]
+    M --> AR1[5xx Error Alert Rule]
+    M --> AR2[Response Time Alert Rule]
+    AR1 -->|Evaluates| T1{Threshold Exceeded?}
+    AR2 -->|Evaluates| T2{Threshold Exceeded?}
+    T1 -->|Yes| A1[Alert Fired]
+    T2 -->|Yes| A2[Alert Fired]
+    A1 --> P[Azure Portal Notifications]
+    A2 --> P
+    
+    style CA fill:#f9f,stroke:#333,stroke-width:2px
+    style AR1 fill:#bbf,stroke:#333,stroke-width:2px
+    style AR2 fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+### アラートルール仕様
+
+#### 1. 5xx系エラーアラート
+
+```bicep
+resource alert5xxStatusCodes 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${containerAppName}-5xx-alerts'
+  location: 'global'
+  properties: {
+    severity: 2
+    enabled: true
+    scopes: [containerAppResourceId]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [{
+        name: 'HTTP5xxErrors'
+        metricName: 'Requests'
+        metricNamespace: 'Microsoft.App/containerApps'
+        dimensions: [{
+          name: 'StatusCodeCategory'
+          operator: 'Include'
+          values: ['5xx']
+        }]
+        operator: 'GreaterThan'
+        threshold: 5
+        timeAggregation: 'Count'
+        criterionType: 'StaticThresholdCriterion'
+      }]
+    }
+    autoMitigate: true
+  }
+}
+```
+
+**設計ポイント**:
+- メトリクス: Container Appsの標準メトリクス「Requests」
+- フィルタ: StatusCodeCategoryディメンションで5xxをフィルタリング
+- 閾値: 5分間で5回以上の5xxエラー
+- 評価頻度: 1分ごと
+- 重要度: 2（警告レベル）
+
+#### 2. 応答時間アラート
+
+```bicep
+resource alertResponseTime 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${containerAppName}-response-time-alerts'
+  location: 'global'
+  properties: {
+    severity: 2
+    enabled: true
+    scopes: [containerAppResourceId]
+    evaluationFrequency: 'PT1M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [{
+        name: 'HighResponseTime'
+        metricName: 'ResponseTime'
+        metricNamespace: 'Microsoft.App/containerApps'
+        operator: 'GreaterThan'
+        threshold: 5000
+        timeAggregation: 'Average'
+        criterionType: 'StaticThresholdCriterion'
+      }]
+    }
+    autoMitigate: true
+  }
+}
+```
+
+**設計ポイント**:
+- メトリクス: Container Appsの標準メトリクス「ResponseTime」
+- 閾値: 平均応答時間5000ミリ秒（5秒）
+- 集計方法: 5分間の平均値
+- 評価頻度: 1分ごと
+- 重要度: 2（警告レベル）
+
+### Bicepモジュール統合
+
+#### alert-rules.bicep
+
+```bicep
+param location string
+param tags object
+param containerAppName string
+
+// Container Appリソースの参照
+resource containerApp 'Microsoft.App/containerApps@2025-01-01' existing = {
+  name: containerAppName
+}
+
+// 5xxエラーアラートルール
+resource alert5xxStatusCodes 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  // ... 上記の定義
+}
+
+// 応答時間アラートルール
+resource alertResponseTime 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  // ... 上記の定義
+}
+
+output alert5xxId string = alert5xxStatusCodes.id
+output alertResponseTimeId string = alertResponseTime.id
+```
+
+#### main.bicepへの統合
+
+```bicep
+// 既存のモジュール定義...
+
+module alertRules './modules/alert-rules.bicep' = {
+  name: 'alert-rules'
+  scope: resourceGroup
+  params: {
+    location: location
+    tags: tags
+    containerAppName: containerApp.outputs.containerAppName
+  }
+  dependsOn: [
+    containerApp
+  ]
+}
+
+// 新しい出力の追加
+output AZURE_ALERT_5XX_ID string = alertRules.outputs.alert5xxId
+output AZURE_ALERT_RESPONSE_TIME_ID string = alertRules.outputs.alertResponseTimeId
+```
+
+### 実装考慮事項
+
+1. **アクショングループ**:
+   - 現時点では定義しない（ユーザー要件）
+   - 将来的にメール、SMS、Webhook通知を追加可能
+
+2. **アラートの調整**:
+   - 閾値は環境に応じて調整可能
+   - 評価頻度とウィンドウサイズの最適化
+
+3. **監視の拡張性**:
+   - 追加のメトリクスアラート（CPU、メモリ使用率など）
+   - カスタムメトリクスの追加
+
+4. **コスト考慮**:
+   - メトリクスアラートは低コスト
+   - 評価頻度の調整でコスト最適化可能

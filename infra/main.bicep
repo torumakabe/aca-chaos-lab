@@ -114,6 +114,16 @@ module containerApp './modules/container-app.bicep' = {
   }
 }
 
+module alertRules './modules/alert-rules.bicep' = {
+  name: 'alert-rules'
+  scope: resourceGroup
+  params: {
+    location: location
+    tags: tags
+    containerAppName: containerApp.outputs.containerAppName
+  }
+}
+
 // Container App's managed identity is automatically assigned the default access policy for Redis Enterprise database
 
 output AZURE_LOCATION string = location
@@ -127,3 +137,5 @@ output AZURE_CONTAINER_REGISTRY_NAME string = containerRegistry.outputs.registry
 output AZURE_CONTAINER_REGISTRY_LOGIN_SERVER string = containerRegistry.outputs.loginServer
 @secure()
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
+output AZURE_ALERT_5XX_ID string = alertRules.outputs.alert5xxId
+output AZURE_ALERT_RESPONSE_TIME_ID string = alertRules.outputs.alertResponseTimeId

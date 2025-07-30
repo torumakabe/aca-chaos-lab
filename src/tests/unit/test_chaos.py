@@ -31,6 +31,7 @@ def reset_chaos_state():
     chaos_state.hang_active = False
     chaos_state.hang_end_time = None
     chaos_state._hang_task = None
+    chaos_state.redis_last_reset = None
     
     yield
     
@@ -39,6 +40,7 @@ def reset_chaos_state():
     chaos_state.hang_active = False
     chaos_state._load_task = None
     chaos_state._hang_task = None
+    chaos_state.redis_last_reset = None
 
 
 class TestLoadSimulation:
@@ -231,6 +233,86 @@ class TestChaosStatus:
         assert 10 <= data["hang"]["remaining_seconds"] <= 15
 
 
+class TestRedisReset:
+    """Test Redis connection reset endpoint."""
+    
+    @patch("app.main.redis_client")
+    def test_redis_reset_success(self, mock_redis_client, client):
+        """Test successful Redis connection reset."""
+        # Mock reset_connections to return 3 connections closed
+        mock_redis_client.reset_connections = AsyncMock(return_value=3)
+        
+        response = client.post("/chaos/redis-reset", json={
+            "force": True
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "redis_connections_reset"
+        assert data["connections_closed"] == 3
+        assert "timestamp" in data
+        
+        # Verify reset was called
+        mock_redis_client.reset_connections.assert_called_once()
+    
+    @patch("app.main.redis_client", None)
+    def test_redis_reset_no_client(self, client):
+        """Test Redis reset when client not initialized."""
+        response = client.post("/chaos/redis-reset")
+        
+        assert response.status_code == 503
+        assert "Redis client not initialized" in response.json()["detail"]
+    
+    @patch("app.main.redis_client")
+    def test_redis_reset_failure(self, mock_redis_client, client):
+        """Test Redis reset failure."""
+        # Mock reset_connections to raise an exception
+        mock_redis_client.reset_connections = AsyncMock(side_effect=Exception("Reset failed"))
+        
+        response = client.post("/chaos/redis-reset")
+        
+        assert response.status_code == 500
+        assert "Redis reset failed" in response.json()["detail"]
+    
+    @patch("app.main.redis_client")
+    def test_status_with_redis(self, mock_redis_client, client):
+        """Test status endpoint includes Redis information."""
+        # Mock get_connection_status
+        mock_redis_client.get_connection_status = AsyncMock(return_value={
+            "connected": True,
+            "connection_count": 2
+        })
+        
+        # Set last reset time
+        chaos_state.redis_last_reset = datetime.now(timezone.utc)
+        
+        response = client.get("/chaos/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "redis" in data
+        assert data["redis"]["connected"] is True
+        assert data["redis"]["connection_count"] == 2
+        assert data["redis"]["last_reset"] is not None
+        
+        # Verify get_connection_status was called
+        mock_redis_client.get_connection_status.assert_called_once()
+    
+    @patch("app.main.redis_client", None)
+    def test_status_no_redis_client(self, client):
+        """Test status when Redis client is not initialized."""
+        response = client.get("/chaos/status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "redis" in data
+        assert data["redis"]["connected"] is False
+        assert data["redis"]["connection_count"] == 0
+        assert data["redis"]["last_reset"] is None
+
+
 class TestChaosState:
     """Test chaos state management."""
     
@@ -244,3 +326,4 @@ class TestChaosState:
         assert state.hang_end_time is None
         assert state._load_task is None
         assert state._hang_task is None
+        assert state.redis_last_reset is None

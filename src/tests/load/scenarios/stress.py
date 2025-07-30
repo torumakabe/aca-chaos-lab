@@ -111,8 +111,8 @@ class StressTestShape(LoadTestShape):
                     # Ramping down
                     spawn_rate = 10
                 else:
-                    # Maintaining current level
-                    spawn_rate = 0
+                    # Maintaining current level - use a very small spawn rate to avoid division by zero
+                    spawn_rate = 0.1
                 
                 return (user_count, spawn_rate)
         

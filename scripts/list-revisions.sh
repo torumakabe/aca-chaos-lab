@@ -2,17 +2,32 @@
 set -euo pipefail
 
 # Script to list all Container App revisions and their status
-# Usage: ./list-revisions.sh <resource-group> <container-app-name>
 
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <resource-group> <container-app-name>"
-    echo "  resource-group: Azure resource group name"
-    echo "  container-app-name: Container App name"
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source the azd environment helper
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/azd-env-helper.sh"
+
+# Load environment from azd if available
+load_azd_environment
+
+# Check parameters or use azd values
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
+    # Use azd environment values
+    echo "Using values from Azure Developer CLI environment"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
+elif [ $# -lt 2 ]; then
+    echo "Usage: $0 [resource-group] [container-app-name]"
+    echo "  resource-group: Azure resource group name (or set via azd)"
+    echo "  container-app-name: Container App name (or set via azd)"
     exit 1
+else
+    RESOURCE_GROUP="$1"
+    APP_NAME="$2"
 fi
-
-RESOURCE_GROUP="$1"
-APP_NAME="$2"
 
 # Colors for output
 RED='\033[0;31m'
@@ -69,7 +84,7 @@ echo "$REVISIONS" | jq -r '
 # Count statistics
 TOTAL_REVISIONS=$(echo "$REVISIONS" | jq '. | length')
 ACTIVE_REVISIONS=$(echo "$REVISIONS" | jq '[.[] | select(.Active == true)] | length')
-RUNNING_REVISIONS=$(echo "$REVISIONS" | jq '[.[] | select(.Status == "Running")] | length')
+RUNNING_REVISIONS=$(echo "$REVISIONS" | jq '[.[] | select(.Status == "Running" or .Status == "RunningAtMaxScale")] | length')
 CHAOS_REVISIONS=$(echo "$REVISIONS" | jq '[.[] | select(.Name | contains("chaos"))] | length')
 
 echo ""

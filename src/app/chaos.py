@@ -7,14 +7,17 @@ import random
 import time
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.models import (
     ChaosStatusResponse,
+    ErrorResponse,
     HangRequest,
     LoadRequest,
     LoadResponse,
+    RedisResetRequest,
+    RedisResetResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,7 +28,7 @@ router = APIRouter(prefix="/chaos", tags=["chaos"])
 class ChaosState:
     """Global state for chaos operations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.load_active = False
         self.load_level = "low"
         self.load_end_time: datetime | None = None
@@ -33,13 +36,14 @@ class ChaosState:
         self.hang_end_time: datetime | None = None
         self._load_task: asyncio.Task | None = None
         self._hang_task: asyncio.Task | None = None
+        self.redis_last_reset: datetime | None = None
 
 
 # Global chaos state
 chaos_state = ChaosState()
 
 
-async def generate_cpu_load(level: str, duration: int):
+async def generate_cpu_load(level: str, duration: int) -> None:
     """Generate CPU load based on the specified level."""
     logger.info(f"Starting CPU load generation: level={level}, duration={duration}s")
 
@@ -70,7 +74,7 @@ async def generate_cpu_load(level: str, duration: int):
     logger.info("CPU load generation completed")
 
 
-async def generate_memory_load(level: str, duration: int):
+async def generate_memory_load(level: str, duration: int) -> None:
     """Generate memory load based on the specified level."""
     logger.info(f"Starting memory load generation: level={level}, duration={duration}s")
 
@@ -104,7 +108,7 @@ async def generate_memory_load(level: str, duration: int):
         logger.info("Memory load generation completed")
 
 
-async def load_generator(level: str, duration: int):
+async def load_generator(level: str, duration: int) -> None:
     """Main load generator that combines CPU and memory load."""
     try:
         chaos_state.load_active = True
@@ -123,20 +127,42 @@ async def load_generator(level: str, duration: int):
 
 
 @router.post("/load", response_model=LoadResponse)
-async def start_load(request: LoadRequest):
+async def start_load(request: LoadRequest, req: Request):
     """Start load simulation."""
     if chaos_state.load_active:
-        raise HTTPException(status_code=409, detail="Load simulation already active")
+        error_response = ErrorResponse(
+            error="Conflict",
+            detail="Load simulation already active",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID"),
+        )
+        return JSONResponse(
+            status_code=409,
+            content=error_response.model_dump(exclude_none=True)
+        )
 
     if request.level not in ["low", "medium", "high"]:
-        raise HTTPException(
-            status_code=400,
+        error_response = ErrorResponse(
+            error="Bad Request",
             detail="Invalid load level. Must be 'low', 'medium', or 'high'",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID"),
+        )
+        return JSONResponse(
+            status_code=400,
+            content=error_response.model_dump(exclude_none=True)
         )
 
     if request.duration_seconds <= 0 or request.duration_seconds > 3600:
-        raise HTTPException(
-            status_code=400, detail="Duration must be between 1 and 3600 seconds"
+        error_response = ErrorResponse(
+            error="Bad Request",
+            detail="Duration must be between 1 and 3600 seconds",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID"),
+        )
+        return JSONResponse(
+            status_code=400,
+            content=error_response.model_dump(exclude_none=True)
         )
 
     # Start load generation in background
@@ -156,10 +182,19 @@ async def start_load(request: LoadRequest):
 
 
 @router.post("/hang")
-async def hang(request: HangRequest):
+async def hang(request: HangRequest, req: Request) -> JSONResponse:
     """Cause the application to hang/become unresponsive."""
     if chaos_state.hang_active:
-        raise HTTPException(status_code=409, detail="Hang already active")
+        error_response = ErrorResponse(
+            error="Conflict",
+            detail="Hang already active",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID"),
+        )
+        return JSONResponse(
+            status_code=409,
+            content=error_response.model_dump(exclude_none=True)
+        )
 
     chaos_state.hang_active = True
     if request.duration_seconds > 0:
@@ -186,9 +221,62 @@ async def hang(request: HangRequest):
     return JSONResponse(content={"status": "hang_completed"})
 
 
+@router.post("/redis-reset", response_model=RedisResetResponse)
+async def reset_redis_connections(request: RedisResetRequest | None = None, req: Request = None):
+    """Reset Redis connections."""
+    from app.main import redis_client
+    
+    if not redis_client:
+        error_response = ErrorResponse(
+            error="Service Unavailable",
+            detail="Redis client not initialized",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID") if req else None,
+        )
+        return JSONResponse(
+            status_code=503,
+            content=error_response.model_dump(exclude_none=True)
+        )
+    
+    try:
+        # Get force parameter
+        force = True
+        if request and hasattr(request, 'force'):
+            force = request.force
+        
+        # Reset connections
+        connections_closed = await redis_client.reset_connections()
+        
+        # Update state
+        chaos_state.redis_last_reset = datetime.now(UTC)
+        
+        logger.info(f"Redis connections reset: {connections_closed} connections closed (force={force})")
+        
+        return RedisResetResponse(
+            status="redis_connections_reset",
+            connections_closed=connections_closed,
+            timestamp=chaos_state.redis_last_reset.isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Redis reset failed: {e}")
+        error_response = ErrorResponse(
+            error="Internal Server Error",
+            detail=f"Redis reset failed: {str(e)}",
+            timestamp=datetime.now(UTC).isoformat(),
+            request_id=req.headers.get("X-Request-ID") if req else None,
+        )
+        return JSONResponse(
+            status_code=500,
+            content=error_response.model_dump(exclude_none=True)
+        )
+
+
 @router.get("/status", response_model=ChaosStatusResponse)
 async def get_status():
     """Get current chaos status."""
+    from app.main import redis_client
+    
     now = datetime.now(UTC)
 
     # Calculate remaining seconds for load
@@ -202,6 +290,18 @@ async def get_status():
     if chaos_state.hang_active and chaos_state.hang_end_time:
         remaining = (chaos_state.hang_end_time - now).total_seconds()
         hang_remaining = max(0, int(remaining))
+    
+    # Get Redis status
+    redis_status = {"connected": False, "connection_count": 0, "last_reset": None}
+    if redis_client:
+        try:
+            status = await redis_client.get_connection_status()
+            redis_status.update(status)
+        except Exception as e:
+            logger.error(f"Failed to get Redis status: {e}")
+    
+    if chaos_state.redis_last_reset:
+        redis_status["last_reset"] = chaos_state.redis_last_reset.isoformat()
 
     return ChaosStatusResponse(
         load={
@@ -210,4 +310,5 @@ async def get_status():
             "remaining_seconds": load_remaining,
         },
         hang={"active": chaos_state.hang_active, "remaining_seconds": hang_remaining},
+        redis=redis_status
     )

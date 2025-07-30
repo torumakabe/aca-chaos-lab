@@ -10,7 +10,7 @@ Azure Container Apps Chaos Labは、制御された環境で障害を注入し�
 - **カオス注入API**: 様々な障害シナリオをトリガーするエンドポイント
 - **インフラストラクチャスクリプト**: ネットワークやデプロイ障害のためのAzureリソース操作ツール
 - **負荷テスト**: カオス注入機能を含むLocustベースの負荷テストシナリオ
-- **完全な可観測性**: 分散トレーシングを含むApplication Insights統合
+- **高い可観測性**: 分散トレーシングを含むApplication Insights統合
 
 ## アーキテクチャ
 
@@ -20,14 +20,12 @@ graph TB
         Internet[クライアント]
     end
     
-    subgraph "Azure Container Apps"
-        Ingress[Container Apps Ingress<br/>HTTPS]
-        CA[Container App<br/>FastAPI + Python]
-    end
-    
     subgraph "Virtual Network"
         subgraph "Container Apps Subnet"
-            CAEnv[Container Apps Environment]
+            subgraph "Container Apps Environment"
+                Ingress[Container Apps Ingress<br/>HTTPS]
+                CA[Container App<br/>FastAPI + Python]
+            end
         end
         
         subgraph "Private Endpoint Subnet"
@@ -42,7 +40,7 @@ graph TB
     
     subgraph "Azure Services"
         ACR[Container Registry<br/>Premium SKU]
-        Redis[Redis Enterprise<br/>Entra ID Auth]
+        Redis["Azure Managed Redis<br/>Redis Enterprise<br/>Entra ID Auth"]
         AI[Application Insights]
         LA[Log Analytics]
     end
@@ -65,19 +63,19 @@ graph TB
     classDef identity fill:#FFD700,stroke:#000,color:#000
     
     class Internet,Ingress,CA,ACR,Redis,AI,LA azure
-    class CAEnv,PERC,PER network
+    class PERC,PER network
     class MI identity
 ```
 
 ## パフォーマンス特性
 
-2025年7月28日の検証結果：
+2025年7月28日の本番環境検証結果：
 
-- **平均レスポンス時間**: 23ms（10ユーザー定常負荷）
-- **最大レスポンス時間**: 249ms
-- **エラー率**: 0%
-- **スループット**: 約5.6 req/s（10ユーザー）
-- **Redis接続レイテンシ**: 1-2ms
+- **平均レスポンス時間**: 23ms（ヘルスチェック、メイン、ステータスエンドポイント）
+- **最大レスポンス時間**: 249ms（負荷テスト中）
+- **エラー率**: 0%（すべてのテストシナリオ）
+- **スループット**: 5.6 req/s（10ユーザー定常負荷）
+- **Redis接続レイテンシ**: 1-2ms（Azure Managed Redis）
 
 ## 機能
 
@@ -96,10 +94,13 @@ graph TB
    - 一時的または永続的な無応答状態
    - デッドロックやブロッキング操作のシミュレーション
 
-4. **デプロイメント障害**
-   - 存在しないコンテナイメージ
+4. **Redis接続リセット**
+   - Redis接続の強制切断
+   - 接続障害と再接続のシミュレーション
+
+5. **デプロイメント障害**
+   - 起動時の失敗（exit 1）
    - 無効な環境変数
-   - メモリ不足状態
 
 ### 可観測性
 
@@ -107,6 +108,7 @@ graph TB
 - Application Insights統合
 - RedisとHTTP呼び出しの分散トレーシング
 - カオス操作のカスタムメトリクスとイベント
+- Container Apps応答監視アラート（5xxエラー、応答時間）
 
 ## 前提条件
 
@@ -120,10 +122,16 @@ graph TB
   - 障害注入スクリプトの実行
 - **[Docker](https://www.docker.com/get-started)**: v28.3以上
   - コンテナイメージのビルド（azdが自動的に使用）
+- **Bash シェル**: 
+  - Linux/macOS: 標準搭載
+  - Windows: WSL2、Git Bash、またはAzure Cloud Shellを使用
 
-### ローカル開発用（オプション）
-- **Python**: 3.13以上
+### 負荷テスト用
+- **Python**: 3.13以上（Locustを実行するため必須）
 - **[uv](https://github.com/astral-sh/uv)**: Pythonパッケージマネージャー（推奨）
+
+### アプリケーション開発用（オプション）
+- 上記のPython環境（既に負荷テスト用にインストール済みの場合は追加不要）
 
 ## クイックスタート
 
@@ -153,9 +161,9 @@ graph TB
    # Redisなしで実行（ローカルテスト用）
    REDIS_ENABLED=false uv run uvicorn app.main:app --reload
    
-   # またはazdデプロイ後、その環境値を使用
-   # アプリケーションは自動的にazd環境変数を検出して使用します
-   uv run uvicorn app.main:app --reload
+   # 注意: azdデプロイ後の環境でも、RedisはVNet内のプライベートエンドポイント経由でのみアクセス可能なため、
+   # ローカル環境からは接続できません。ローカルでRedis機能をテストする場合は、
+   # ローカルRedisインスタンスを起動するか、REDIS_ENABLED=falseで実行してください。
    ```
 
 ### Azureへのデプロイ
@@ -216,6 +224,19 @@ graph TB
   }
   ```
 
+### エラーレスポンス
+
+すべてのAPIエンドポイントは標準化されたエラーレスポンス形式を返します：
+
+```json
+{
+  "error": "Bad Request",
+  "detail": "Invalid load level. Must be 'low', 'medium', or 'high'",
+  "timestamp": "2025-07-29T10:30:00Z",
+  "request_id": "abc123-def456-ghi789"
+}
+```
+
 ## カオススクリプト
 
 すべてのスクリプトはazd環境変数に対応しています。`azd up`の後、パラメータを指定せずに実行できます。
@@ -243,15 +264,15 @@ graph TB
 
 ```bash
 # プロジェクトルートディレクトリで実行
-# azd環境変数を使用（デフォルト: nonexistent-image）
+# azd環境変数を使用（デフォルト: startup-failure）
 ./scripts/inject-deployment-failure.sh
 
 # 障害タイプを指定
 ./scripts/inject-deployment-failure.sh bad-env
-./scripts/inject-deployment-failure.sh oom
 
 # デプロイメントを復元
-./scripts/restore-deployment.sh
+# シングルリビジョンモードでは、新しいデプロイメントが自動的に古いリビジョンを置き換えます
+azd deploy
 
 # リビジョンを一覧表示
 ./scripts/list-revisions.sh
@@ -268,16 +289,16 @@ graph TB
 cd src/tests/load
 
 # ベースラインテスト（カオスなし）
-./run-load-tests.sh https://myapp.azurecontainerapps.io baseline
+./run-load-tests.sh baseline
 
 # ストレステスト（段階的な負荷増加）
-./run-load-tests.sh https://myapp.azurecontainerapps.io stress
+./run-load-tests.sh stress
 
 # スパイクテスト（急激な負荷）
-./run-load-tests.sh https://myapp.azurecontainerapps.io spike
+./run-load-tests.sh spike
 
 # カオステスト（障害注入あり）
-./run-load-tests.sh https://myapp.azurecontainerapps.io chaos
+./run-load-tests.sh chaos
 
 # 負荷テスト完了後はプロジェクトルートに戻る
 cd ../../..
@@ -368,9 +389,16 @@ cd ..
 | `REDIS_HOST` | Redisホスト名 | localhost | `AZURE_REDIS_HOST` |
 | `REDIS_PORT` | Redisポート | 10000 | `AZURE_REDIS_PORT` |
 | `REDIS_ENABLED` | Redis接続を有効化 | true | - |
+| `REDIS_SSL` | Redis SSL接続を有効化 | true | - |
+| `REDIS_MAX_CONNECTIONS` | Redis接続プール最大接続数 | 50 | - |
+| `REDIS_SOCKET_TIMEOUT` | Redisソケットタイムアウト（秒） | 5 | - |
+| `REDIS_SOCKET_CONNECT_TIMEOUT` | Redisソケット接続タイムアウト（秒） | 5 | - |
+| `REDIS_RETRY_ON_TIMEOUT` | タイムアウト時のリトライを有効化 | true | - |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights接続文字列 | なし | `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 | `LOG_LEVEL` | アプリケーションログレベル | INFO | - |
+| `APP_PORT` | アプリケーションポート | 8000 | - |
 | `AZURE_CLIENT_ID` | マネージドアイデンティティのクライアントID | なし | `AZURE_MANAGED_IDENTITY_CLIENT_ID` |
+| `AZURE_TENANT_ID` | Azure ADテナントID（オプション） | なし | - |
 
 ### azd環境変数
 
@@ -398,11 +426,6 @@ azd env get-value AZURE_CONTAINER_APP_NAME
 - **原因**: BicepテンプレートでAPIバージョンが不足
 - **解決**: 最新のBicepテンプレートを取得してください
 
-#### "RoleDefinitionDoesNotExist" エラー  
-- **症状**: `The specified role definition with ID does not exist`
-- **原因**: 間違ったロール定義IDが指定されている
-- **解決**: 正しいロール定義IDに修正済みです
-
 #### デプロイメント失敗時の対処
 ```bash
 # 既存のリソースを削除
@@ -421,9 +444,11 @@ azd up
 - **症状**: ネットワーク障害を注入してもRedis接続が継続する
 - **原因**: Redis接続プールが既存の接続を保持している
 - **対処**: 
-  - 数分待って再度確認
-  - より長い期間の障害注入を設定
-  - アプリケーションの再起動で強制的に接続をリセット
+  - Redis再接続APIを使用して接続をリセット：
+    ```bash
+    curl -X POST "${APP_URL}/chaos/redis-reset"
+    ```
+  - これにより、既存の接続プールがクリアされ、新しいネットワークルールが適用されます
 
 #### ハングアップAPIのタイムアウト
 - **症状**: ハングAPIを呼び出してもクライアントがタイムアウトする
@@ -441,28 +466,51 @@ azd up
   - ウォームアップリクエストを送信
   - 最小インスタンス数を1以上に設定
 
+## アラート設定
+
+Container Appsの応答状況を監視するための自動アラートが設定されています：
+
+### 5xxエラーアラート
+- **メトリクス**: Container AppsのRequestsメトリクス（StatusCodeCategory = 5xx）
+- **閾値**: 5分間で5回以上の5xxエラー
+- **評価頻度**: 1分ごと
+- **重要度**: 警告（Severity 2）
+
+### 応答時間アラート
+- **メトリクス**: Container AppsのResponseTimeメトリクス
+- **閾値**: 平均応答時間が5秒（5000ms）を超過
+- **評価頻度**: 1分ごと
+- **重要度**: 警告（Severity 2）
+
+### アラートの確認方法
+1. Azure Portalにログイン
+2. デプロイされたリソースグループに移動
+3. アラートルールを確認：
+   - `{container-app-name}-5xx-alerts`
+   - `{container-app-name}-response-time-alerts`
+
+**注意**: 現在アクショングループは設定されていません。メール通知などが必要な場合は、Azure Portalからアクショングループを追加してください。
+
 ## セキュリティ考慮事項
 
-- Redis認証にEntra ID（マネージドアイデンティティ）を使用
-- コード内にパスワードや接続文字列を含まない
-- VNet統合によるネットワーク分離
-- NSGによる送信トラフィック制御
-
-## コントリビューション
-
-1. リポジトリをフォーク
-2. フィーチャーブランチを作成
-3. テストを含む変更を実装
-4. リンティングと型チェックを実行
-5. プルリクエストを提出
+- **認証**
+  - Redis認証にEntra ID（ユーザー割り当てマネージドアイデンティティ）を使用
+  - パスワードレス認証により、資格情報の漏洩リスクを排除
+  - トークンの自動更新により、期限切れによる接続エラーを防止
+- **ネットワークセキュリティ**
+  - VNet統合によるプライベートネットワーク内での通信
+  - Private Endpointを使用してRedisとContainer Registryへの接続を保護
+  - NSGによる送信トラフィック制御（Private Endpointサブネット）
+- **データ保護**
+  - RedisへのSSL/TLS接続（ポート10000）
+  - コード内にパスワードや接続文字列を含まない
+  - 環境変数を使用した設定管理
+- **監査とモニタリング**
+  - Application Insightsによる包括的なテレメトリ収集
+  - 分散トレーシングによる操作の追跡
+  - 異常検知のためのカスタムメトリクス
+  - 自動アラートによる問題の早期検出
 
 ## ライセンス
 
 MITライセンス - 詳細は[LICENSE](LICENSE)ファイルを参照
-
-## 謝辞
-
-- Azure SRE Agentの機能テスト用に構築
-- サーバーレスコンテナホスティングにAzure Container Appsを使用
-- Azure Managed Redis（Redis Enterprise）と統合
-- 可観測性にApplication Insightsを活用

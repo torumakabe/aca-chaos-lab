@@ -127,20 +127,117 @@ async def test_increment_operation(redis_client_instance):
 
 
 @pytest.mark.asyncio
-async def test_operation_with_reconnect(redis_client_instance, mock_azure_credential):
-    """Test Redis operation with automatic reconnection."""
-    redis_client_instance.credential = mock_azure_credential
-    
+async def test_operation_with_error(redis_client_instance):
+    """Test Redis operation with connection error."""
     mock_redis = AsyncMock()
-    # First call fails with connection error, second returns string
-    mock_redis.get.side_effect = [redis.ConnectionError("Lost connection"), "test_value"]
+    # Redis will fail with connection error
+    mock_redis.get.side_effect = redis.ConnectionError("Lost connection")
     redis_client_instance.client = mock_redis
     
-    with patch.object(redis_client_instance, "connect", new_callable=AsyncMock) as mock_connect:
-        result = await redis_client_instance.get("test_key")
-        assert result == "test_value"
-        mock_connect.assert_called_once()
-        assert mock_redis.get.call_count == 2
+    # Operation should raise the exception (redis-py handles retries internally)
+    with pytest.raises(redis.ConnectionError) as exc_info:
+        await redis_client_instance.get("test_key")
+    
+    assert "Lost connection" in str(exc_info.value)
+    mock_redis.get.assert_called_once_with("test_key")
+
+
+@pytest.mark.asyncio
+async def test_operation_without_client(redis_client_instance):
+    """Test Redis operation when client is not initialized."""
+    redis_client_instance.client = None
+    
+    with pytest.raises(Exception) as exc_info:
+        await redis_client_instance.get("test_key")
+    
+    assert "Redis client not initialized" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_reset_connections(redis_client_instance):
+    """Test Redis connection reset."""
+    mock_redis = AsyncMock()
+    redis_client_instance.client = mock_redis
+    redis_client_instance._connection_count = 3
+    
+    # Mock connection pool with disconnect method
+    mock_pool = AsyncMock()
+    mock_pool.disconnect.return_value = 3
+    mock_redis.connection_pool = mock_pool
+    
+    result = await redis_client_instance.reset_connections()
+    
+    assert result == 3
+    mock_pool.disconnect.assert_called_once()
+    assert redis_client_instance.client is not None  # Client instance is preserved
+    assert redis_client_instance._connection_count == 0
+
+
+@pytest.mark.asyncio
+async def test_reset_connections_no_client(redis_client_instance):
+    """Test Redis connection reset when client is not connected."""
+    result = await redis_client_instance.reset_connections()
+    
+    assert result == 0
+    assert redis_client_instance.client is None
+
+
+@pytest.mark.asyncio
+async def test_reset_connections_with_error(redis_client_instance):
+    """Test Redis connection reset with error during disconnect."""
+    mock_redis = AsyncMock()
+    redis_client_instance.client = mock_redis
+    redis_client_instance._connection_count = 2
+    
+    # Mock connection pool with disconnect that raises error
+    mock_pool = AsyncMock()
+    mock_pool.disconnect.side_effect = Exception("Disconnect failed")
+    mock_redis.connection_pool = mock_pool
+    
+    with pytest.raises(Exception) as exc_info:
+        await redis_client_instance.reset_connections()
+    
+    assert "Disconnect failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_get_connection_status_connected(redis_client_instance):
+    """Test getting connection status when connected."""
+    mock_redis = AsyncMock()
+    mock_redis.ping.return_value = True
+    redis_client_instance.client = mock_redis
+    redis_client_instance._connection_count = 2
+    
+    status = await redis_client_instance.get_connection_status()
+    
+    assert status["connected"] is True
+    assert status["connection_count"] == 2
+    mock_redis.ping.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_connection_status_disconnected(redis_client_instance):
+    """Test getting connection status when disconnected."""
+    mock_redis = AsyncMock()
+    mock_redis.ping.side_effect = redis.ConnectionError("Not connected")
+    redis_client_instance.client = mock_redis
+    redis_client_instance._connection_count = 0
+    
+    status = await redis_client_instance.get_connection_status()
+    
+    assert status["connected"] is False
+    assert status["connection_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_connection_status_no_client(redis_client_instance):
+    """Test getting connection status when client is None."""
+    redis_client_instance.client = None
+    
+    status = await redis_client_instance.get_connection_status()
+    
+    assert status["connected"] is False
+    assert status["connection_count"] == 0
 
 
 @pytest.mark.asyncio

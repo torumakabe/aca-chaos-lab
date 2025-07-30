@@ -6,6 +6,8 @@ from typing import Any
 
 import redis.asyncio as redis
 from azure.identity.aio import DefaultAzureCredential
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +15,17 @@ logger = logging.getLogger(__name__)
 class RedisClient:
     """Redis client with Azure Entra ID authentication support."""
 
-    def __init__(self, host: str, port: int = 10000):
+    def __init__(self, host: str, port: int = 10000, settings=None):
         """Initialize Redis client configuration."""
         self.host = host
         self.port = port
+        self.settings = settings
         self.client: redis.Redis | None = None
         self.credential: DefaultAzureCredential | None = None
         self._token_cache: dict[str, Any] = {}
         self._token_lock = asyncio.Lock()
+        self._connection_count = 0
+        self._connection_lock = asyncio.Lock()
 
     async def _get_entra_token(self) -> str:
         """Get Entra ID token for Redis authentication."""
@@ -66,21 +71,44 @@ class RedisClient:
             client_id = os.getenv("AZURE_CLIENT_ID", "")
             logger.info(f"Using client ID: {client_id}")
 
+            # Use connection pool settings from config or defaults
+            max_connections = getattr(self.settings, 'redis_max_connections', 50) if self.settings else 50
+            socket_timeout = getattr(self.settings, 'redis_socket_timeout', 3) if self.settings else 3
+            socket_connect_timeout = getattr(self.settings, 'redis_socket_connect_timeout', 3) if self.settings else 3
+            
+            # Configure retry with exponential backoff
+            # Default: 1 retry with exponential backoff (1s base, 3s cap)
+            max_retries = getattr(self.settings, 'redis_max_retries', 1) if self.settings else 1
+            backoff_base = getattr(self.settings, 'redis_backoff_base', 1) if self.settings else 1
+            backoff_cap = getattr(self.settings, 'redis_backoff_cap', 3) if self.settings else 3
+            
+            retry_strategy = Retry(
+                backoff=ExponentialBackoff(base=backoff_base, cap=backoff_cap),
+                retries=max_retries
+            )
+            
+            # Create Redis client with connection pool
+            # redis-py will manage the connection pool internally
             self.client = await redis.from_url(
                 f"rediss://{self.host}:{self.port}",
-                username=client_id,  # Use client ID as username for Redis Enterprise
-                password=token,  # Use token as password
+                username=client_id,
+                password=token,
                 decode_responses=True,
-                socket_connect_timeout=10,  # Increased timeout
-                socket_timeout=10,
-                retry_on_timeout=True,
+                socket_connect_timeout=socket_connect_timeout,
+                socket_timeout=socket_timeout,
+                retry=retry_strategy,
+                retry_on_error=[redis.ConnectionError, redis.TimeoutError],
                 health_check_interval=30,
+                max_connections=max_connections,
             )
 
             # Test connection
             logger.info("Testing Redis connection with ping")
             await self.client.ping()
             logger.info("Redis connection successful!")
+            
+            # Increment connection count
+            self._connection_count += 1
 
         except Exception as e:
             logger.error(f"Redis connection failed: {str(e)}")
@@ -89,61 +117,83 @@ class RedisClient:
                 self.client = None
             raise Exception(f"Failed to connect to Redis: {str(e)}") from e
 
+    async def is_connected(self) -> bool:
+        """Check if Redis client is connected."""
+        if not self.client:
+            return False
+        try:
+            await self.client.ping()
+            return True
+        except Exception:
+            return False
+    
     async def get(self, key: str) -> str | None:
         """Get value from Redis."""
         if not self.client:
-            raise Exception("Redis client not connected")
-
-        try:
-            value = await self.client.get(key)
-            return value if value else None
-        except redis.ConnectionError:
-            # Try to reconnect with fresh token
-            await self.connect()
-            value = await self.client.get(key)
-            return value if value else None
+            raise Exception("Redis client not initialized")
+        
+        value = await self.client.get(key)
+        return value if value else None
 
     async def set(self, key: str, value: str, ex: int | None = None) -> bool:
         """Set value in Redis."""
         if not self.client:
-            raise Exception("Redis client not connected")
-
-        try:
-            result = await self.client.set(key, value, ex=ex)
-            return bool(result)
-        except redis.ConnectionError:
-            # Try to reconnect with fresh token
-            await self.connect()
-            result = await self.client.set(key, value, ex=ex)
-            return bool(result)
+            raise Exception("Redis client not initialized")
+        
+        result = await self.client.set(key, value, ex=ex)
+        return bool(result)
 
     async def increment(self, key: str) -> int:
         """Increment counter in Redis."""
         if not self.client:
-            raise Exception("Redis client not connected")
-
-        try:
-            result = await self.client.incr(key)
-            return int(result)
-        except redis.ConnectionError:
-            # Try to reconnect with fresh token
-            await self.connect()
-            result = await self.client.incr(key)
-            return int(result)
+            raise Exception("Redis client not initialized")
+        
+        result = await self.client.incr(key)
+        return int(result)
 
     async def ping(self) -> bool:
         """Ping Redis to check connection."""
         if not self.client:
-            raise Exception("Redis client not connected")
+            raise Exception("Redis client not initialized")
+        
+        result = await self.client.ping()
+        return bool(result)
 
-        try:
-            result = await self.client.ping()
-            return bool(result)
-        except redis.ConnectionError:
-            # Try to reconnect with fresh token
-            await self.connect()
-            result = await self.client.ping()
-            return bool(result)
+    async def reset_connections(self) -> int:
+        """Reset all Redis connections."""
+        async with self._connection_lock:
+            closed_count = 0
+            if self.client and hasattr(self.client, "connection_pool"):
+                try:
+                    logger.info("Resetting Redis connections")
+                    pool = self.client.connection_pool
+                    
+                    # Disconnect all connections in the pool
+                    # This is the standard way to reset connections
+                    closed_count = await pool.disconnect()
+                    self._connection_count = 0
+                    
+                    logger.info(f"Redis connections reset: {closed_count} connections closed")
+                except Exception as e:
+                    logger.error(f"Error during Redis reset: {e}")
+                    raise
+            
+            return closed_count
+    
+    async def get_connection_status(self) -> dict:
+        """Get current connection status."""
+        connected = False
+        if self.client:
+            try:
+                await self.client.ping()
+                connected = True
+            except Exception:
+                connected = False
+        
+        return {
+            "connected": connected,
+            "connection_count": self._connection_count
+        }
 
     async def close(self):
         """Close Redis connection and cleanup."""

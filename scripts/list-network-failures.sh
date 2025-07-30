@@ -2,17 +2,29 @@
 set -euo pipefail
 
 # Script to list all chaos-related NSG rules
-# Usage: ./list-network-failures.sh <resource-group> <nsg-name>
+# Usage: ./list-network-failures.sh [resource-group] [nsg-name]
 
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <resource-group> <nsg-name>"
-    echo "  resource-group: Azure resource group name"
-    echo "  nsg-name: Network Security Group name"
+# Source azd environment helper
+# shellcheck source=/dev/null
+source "$(dirname "$0")/azd-env-helper.sh"
+load_azd_environment
+
+# Get parameters with fallback to azd/env values
+RESOURCE_GROUP="${1:-${AZURE_RESOURCE_GROUP:-}}"
+NSG_NAME="${2:-${AZURE_NSG_NAME:-}}"
+
+# Check required parameters
+if [ -z "$RESOURCE_GROUP" ] || [ -z "$NSG_NAME" ]; then
+    echo "Error: Missing required parameters"
+    echo "Usage: $0 [resource-group] [nsg-name]"
+    echo "  resource-group: Azure resource group name (optional if using azd)"
+    echo "  nsg-name: Network Security Group name (optional if using azd)"
+    echo ""
+    echo "You can also set environment variables:"
+    echo "  export AZURE_RESOURCE_GROUP=<resource-group>"
+    echo "  export AZURE_NSG_NAME=<nsg-name>"
     exit 1
 fi
-
-RESOURCE_GROUP="$1"
-NSG_NAME="$2"
 
 # Colors for output
 RED='\033[0;31m'

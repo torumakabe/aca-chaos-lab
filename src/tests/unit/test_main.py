@@ -46,14 +46,16 @@ async def test_root_endpoint_redis_failure(client):
     """Test root endpoint when Redis operations fail."""
     failing_redis = AsyncMock()
     failing_redis.get.side_effect = Exception("Redis connection failed")
+    failing_redis.connect.side_effect = Exception("Cannot reconnect")
     
     with patch("app.main.redis_client", failing_redis):
         with patch("app.main.settings.redis_enabled", True):
             response = client.get("/")
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
-            assert data["message"] == "Hello from Container Apps Chaos Lab"
-            assert data["redis_data"] == "Redis unavailable"
+            assert data["error"] == "Service Unavailable"
+            assert "Redis operation failed" in data["detail"]
+            assert "timestamp" in data
 
 
 def test_health_endpoint_without_redis(client):
@@ -94,7 +96,7 @@ async def test_health_endpoint_redis_failure(client):
     with patch("app.main.redis_client", failing_redis):
         with patch("app.main.settings.redis_enabled", True):
             response = client.get("/health")
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
             assert data["status"] == "unhealthy"
             assert data["redis"]["connected"] is False

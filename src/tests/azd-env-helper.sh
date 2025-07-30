@@ -33,21 +33,21 @@ load_azd_environment() {
         echo "Using Azure Developer CLI environment values..." >&2
 
         # Export common values
-        RESOURCE_GROUP=$(get_env_value "AZURE_RESOURCE_GROUP" "${RESOURCE_GROUP:-}")
-        export RESOURCE_GROUP
-        CONTAINER_APP_NAME=$(get_env_value "AZURE_CONTAINER_APP_NAME" "${CONTAINER_APP_NAME:-}")
-        export CONTAINER_APP_NAME
-        CONTAINER_APP_URI=$(get_env_value "AZURE_CONTAINER_APP_URI" "${CONTAINER_APP_URI:-}")
-        export CONTAINER_APP_URI
-        REDIS_HOST=$(get_env_value "AZURE_REDIS_HOST" "${REDIS_HOST:-}")
-        export REDIS_HOST
-        LOCATION=$(get_env_value "AZURE_LOCATION" "${LOCATION:-}")
-        export LOCATION
+        AZURE_RESOURCE_GROUP=$(get_env_value "AZURE_RESOURCE_GROUP" "${AZURE_RESOURCE_GROUP:-}")
+        export AZURE_RESOURCE_GROUP
+        AZURE_CONTAINER_APP_NAME=$(get_env_value "AZURE_CONTAINER_APP_NAME" "${AZURE_CONTAINER_APP_NAME:-}")
+        export AZURE_CONTAINER_APP_NAME
+        AZURE_CONTAINER_APP_URI=$(get_env_value "AZURE_CONTAINER_APP_URI" "${AZURE_CONTAINER_APP_URI:-}")
+        export AZURE_CONTAINER_APP_URI
+        AZURE_REDIS_HOST=$(get_env_value "AZURE_REDIS_HOST" "${AZURE_REDIS_HOST:-}")
+        export AZURE_REDIS_HOST
+        AZURE_LOCATION=$(get_env_value "AZURE_LOCATION" "${AZURE_LOCATION:-}")
+        export AZURE_LOCATION
 
         # For network operations, we need to find the NSG name
-        if [ -z "${NSG_NAME:-}" ] && [ -n "$RESOURCE_GROUP" ]; then
-            NSG_NAME=$(az network nsg list -g "$RESOURCE_GROUP" --query "[0].name" -o tsv 2>/dev/null || echo "")
-            export NSG_NAME
+        if [ -z "${AZURE_NSG_NAME:-}" ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ]; then
+            AZURE_NSG_NAME=$(az network nsg list -g "$AZURE_RESOURCE_GROUP" --query "[0].name" -o tsv 2>/dev/null || echo "")
+            export AZURE_NSG_NAME
         fi
     else
         echo "Azure Developer CLI not found, using environment variables..." >&2

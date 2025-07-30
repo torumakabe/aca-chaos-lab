@@ -14,22 +14,29 @@ source "${SCRIPT_DIR}/azd-env-helper.sh"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${CONTAINER_APP_NAME:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
-    APP_NAME="$CONTAINER_APP_NAME"
-    FAILURE_TYPE="nonexistent-image"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
+    FAILURE_TYPE="startup-failure"
+elif [ $# -eq 1 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
+    # Use azd environment values with provided failure type
+    echo "Using values from Azure Developer CLI environment"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
+    FAILURE_TYPE="$1"
 elif [ $# -lt 2 ]; then
     echo "Usage: $0 [resource-group] [container-app-name] [failure-type]"
     echo "  resource-group: Azure resource group name (or set via azd)"
     echo "  container-app-name: Container App name (or set via azd)"
-    echo "  failure-type: Type of failure (nonexistent-image, bad-env, oom)"
-    echo "                Default: nonexistent-image"
+    echo "  failure-type: Type of failure (startup-failure, bad-env)"
+    echo "                Default: startup-failure"
     exit 1
 else
     RESOURCE_GROUP="$1"
     APP_NAME="$2"
-    FAILURE_TYPE="${3:-nonexistent-image}"
+    FAILURE_TYPE="${3:-startup-failure}"
 fi
 
 # Colors for output
@@ -66,12 +73,13 @@ echo "Current memory: $CURRENT_MEMORY"
 REVISION_SUFFIX="chaos-$(date +%s)"
 
 case "$FAILURE_TYPE" in
-    "nonexistent-image")
-        echo -e "${YELLOW}💥 Creating revision with non-existent image...${NC}"
+    "startup-failure")
+        echo -e "${YELLOW}💥 Creating revision with startup failure command...${NC}"
         az containerapp update \
             --resource-group "$RESOURCE_GROUP" \
             --name "$APP_NAME" \
-            --image "mcr.microsoft.com/chaos-lab/nonexistent:latest" \
+            --command "/bin/sh" \
+            --args '["sh", "-c", "echo Simulating startup failure && exit 1"]' \
             --revision-suffix "$REVISION_SUFFIX" \
             --output none
         ;;
@@ -86,20 +94,9 @@ case "$FAILURE_TYPE" in
             --output none
         ;;
 
-    "oom")
-        echo -e "${YELLOW}💥 Creating revision with insufficient memory...${NC}"
-        az containerapp update \
-            --resource-group "$RESOURCE_GROUP" \
-            --name "$APP_NAME" \
-            --memory "0.25Gi" \
-            --set-env-vars "CHAOS_MEMORY_HOG=true" \
-            --revision-suffix "$REVISION_SUFFIX" \
-            --output none
-        ;;
-
     *)
         echo -e "${RED}❌ Unknown failure type: ${FAILURE_TYPE}${NC}"
-        echo "Valid types: nonexistent-image, bad-env, oom"
+        echo "Valid types: startup-failure, bad-env"
         exit 1
         ;;
 esac
@@ -118,4 +115,4 @@ az containerapp revision list \
     --output table
 
 echo -e "${YELLOW}💡 To restore the previous working revision, use:${NC}"
-echo "./restore-deployment.sh $RESOURCE_GROUP $APP_NAME"
+echo "To restore, run: azd deploy"

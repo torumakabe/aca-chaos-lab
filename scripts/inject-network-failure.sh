@@ -14,15 +14,29 @@ source "${SCRIPT_DIR}/azd-env-helper.sh"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${NSG_NAME:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_NSG_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    NSG_NAME="${AZURE_NSG_NAME}"
     DURATION="60"
+elif [ $# -eq 1 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_NSG_NAME:-}" ]; then
+    # Use azd environment values with custom duration
+    echo "Using values from Azure Developer CLI environment with custom duration"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    NSG_NAME="${AZURE_NSG_NAME}"
+    DURATION="$1"
 elif [ $# -lt 2 ]; then
-    echo "Usage: $0 [resource-group] [nsg-name] [duration-seconds]"
-    echo "  resource-group: Azure resource group name (or set via azd)"
-    echo "  nsg-name: Network Security Group name (or set via azd)"
-    echo "  duration-seconds: How long to block traffic (default: 60, use 0 for permanent)"
+    echo "Usage: $0 [duration-seconds]"
+    echo "       $0 [resource-group] [nsg-name] [duration-seconds]"
+    echo ""
+    echo "  When using azd environment (AZURE_RESOURCE_GROUP and AZURE_NSG_NAME are set):"
+    echo "    duration-seconds: How long to block traffic (default: 60, use 0 for permanent)"
+    echo ""
+    echo "  When not using azd environment:"
+    echo "    resource-group: Azure resource group name"
+    echo "    nsg-name: Network Security Group name"
+    echo "    duration-seconds: How long to block traffic (default: 60, use 0 for permanent)"
     exit 1
 else
     RESOURCE_GROUP="$1"
@@ -57,7 +71,7 @@ az network nsg rule create \
     --nsg-name "$NSG_NAME" \
     --name "$RULE_NAME" \
     --priority "$PRIORITY" \
-    --direction Outbound \
+    --direction Inbound \
     --access Deny \
     --protocol Tcp \
     --destination-port-ranges 10000 \
@@ -66,6 +80,48 @@ az network nsg rule create \
 
 echo -e "${GREEN}✅ Network failure injected successfully!${NC}"
 echo "Rule name: $RULE_NAME"
+
+# Wait for NSG rule to propagate before restarting container
+echo -e "${YELLOW}⏳ Waiting 30 seconds for NSG rule to propagate...${NC}"
+sleep 30
+
+# Reset Redis connections using the chaos API
+if [ -n "${AZURE_CONTAINER_APP_URI:-}" ]; then
+    echo -e "${YELLOW}🔄 Resetting Redis connections via API to apply network rules...${NC}"
+    
+    # Call the Redis reset API
+    echo -e "${YELLOW}📡 Calling Redis reset API at ${AZURE_CONTAINER_APP_URI}/chaos/redis-reset${NC}"
+    
+    # Use curl to call the API with retry logic
+    MAX_RETRIES=3
+    RETRY_COUNT=0
+    SUCCESS=false
+    
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
+        if curl -X POST "${AZURE_CONTAINER_APP_URI}/chaos/redis-reset" \
+            -H "Content-Type: application/json" \
+            -d '{"force": true}' \
+            -s -w "\nHTTP Status: %{http_code}\n" \
+            --connect-timeout 10 \
+            --max-time 30; then
+            SUCCESS=true
+            echo -e "${GREEN}✅ Redis connections reset successfully${NC}"
+        else
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo -e "${YELLOW}⚠️  API call failed, retrying in 5 seconds... (attempt $((RETRY_COUNT + 1))/${MAX_RETRIES})${NC}"
+                sleep 5
+            else
+                echo -e "${RED}❌ Failed to reset Redis connections after ${MAX_RETRIES} attempts${NC}"
+                echo -e "${YELLOW}💡 The NSG rule has been applied but existing connections may persist${NC}"
+                echo -e "${YELLOW}💡 New connections to Redis will be blocked${NC}"
+            fi
+        fi
+    done
+else
+    echo -e "${YELLOW}⚠️  AZURE_CONTAINER_APP_URI not set. Please reset Redis connections manually:${NC}"
+    echo "curl -X POST https://<your-app-uri>/chaos/redis-reset -H 'Content-Type: application/json' -d '{\"force\": true}'"
+fi
 
 # If duration is specified and not 0, schedule removal
 if [ "$DURATION" -gt 0 ]; then

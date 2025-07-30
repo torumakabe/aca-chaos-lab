@@ -11,10 +11,12 @@
    - Microsoft.OperationalInsights
 
 2. **インストール済みツール**：
-   - Azure CLI（最新版）
-   - Azure Developer CLI (`azd`)
-   - Docker Desktop
+   - Azure CLI v2.75.0以上
+   - Azure Developer CLI (`azd`) v1.18.0以上
+   - Docker v28.3以上
    - Git
+   - Bash シェル（Linux/macOS標準搭載、WindowsはWSL2/Git Bash/Azure Cloud Shell）
+   - Python 3.13以上（負荷テスト実行用）
 
 3. **権限**：
    - サブスクリプション/リソースグループへのContributorロール

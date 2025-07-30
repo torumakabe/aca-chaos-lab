@@ -14,9 +14,11 @@ source "${SCRIPT_DIR}/azd-env-helper.sh"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${RESOURCE_GROUP:-}" ] && [ -n "${NSG_NAME:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_NSG_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
+    NSG_NAME="${AZURE_NSG_NAME}"
 elif [ $# -lt 2 ]; then
     echo "Usage: $0 [resource-group] [nsg-name]"
     echo "  resource-group: Azure resource group name (or set via azd)"
@@ -61,7 +63,7 @@ echo -e "${YELLOW}Found ${RULE_COUNT} chaos rule(s) to remove${NC}"
 
 # Remove each rule
 while IFS= read -r RULE_NAME; do
-    echo -e "${YELLOW}❌ Removing rule: ${RULE_NAME}${NC}"
+    echo -e "${YELLOW}🔧 Removing rule: ${RULE_NAME}${NC}"
     az network nsg rule delete \
         --resource-group "$RESOURCE_GROUP" \
         --nsg-name "$NSG_NAME" \
