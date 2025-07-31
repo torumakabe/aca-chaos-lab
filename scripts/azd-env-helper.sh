@@ -11,6 +11,9 @@ get_env_value() {
         local azd_value
         azd_value=$(azd env get-value "$key" 2>/dev/null || echo "")
         if [ -n "$azd_value" ]; then
+            # Remove surrounding quotes if present
+            azd_value="${azd_value%\"}"
+            azd_value="${azd_value#\"}"
             echo "$azd_value"
             return
         fi
@@ -43,8 +46,10 @@ load_azd_environment() {
         export AZURE_REDIS_HOST
         AZURE_LOCATION=$(get_env_value "AZURE_LOCATION" "${AZURE_LOCATION:-}")
         export AZURE_LOCATION
+        AZURE_NSG_NAME=$(get_env_value "AZURE_NSG_NAME" "${AZURE_NSG_NAME:-}")
+        export AZURE_NSG_NAME
 
-        # For network operations, we need to find the NSG name
+        # For network operations, we need to find the NSG name if not provided
         if [ -z "${AZURE_NSG_NAME:-}" ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ]; then
             AZURE_NSG_NAME=$(az network nsg list -g "$AZURE_RESOURCE_GROUP" --query "[0].name" -o tsv 2>/dev/null || echo "")
             export AZURE_NSG_NAME
