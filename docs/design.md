@@ -5,6 +5,7 @@
 - 2025-07-28: 実装に合わせて更新（サブネット構成、Redisポート、マネージドID）
 - 2025-07-30: Redis接続リセット機能の設計追加
 - 2025-07-30: Container Apps応答監視アラート設計追加
+- 2025-07-31: OpenTelemetry実装のシンプル化
 
 ## アーキテクチャ概要
 
@@ -409,7 +410,7 @@ except Exception as e:
 - **Webフレームワーク**: FastAPI
 - **非同期処理**: asyncio
 - **Redisクライアント**: redis (v6.2.0) + azure-identity
-- **監視**: Azure Monitor OpenTelemetry (v1.6.12)
+- **監視**: Azure Monitor OpenTelemetry (v1.6.12) - 自動計装使用
 - **パッケージ管理**: uv (開発環境のみ)
 
 ### 開発ツール
@@ -723,7 +724,54 @@ except Exception as e:
 - Redis読み書き操作を含むAPI
 
 
-## 実装状況（2025-07-28）
+### OpenTelemetry実装（2025-07-31更新）
+
+#### 概要
+
+Azure Monitor OpenTelemetryの自動計装機能を使用してシンプルな実装を実現しています：
+
+- **自動計装**: FastAPIは自動的に計装され、手動のspan作成は不要
+- **最小限の設定**: `configure_azure_monitor()`の呼び出しのみで設定完了
+- **Redis計装**: RedisInstrumentor().instrument()で個別に設定
+
+#### 実装詳細
+
+```python
+# telemetry.py - シンプル化されたセットアップ
+from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+
+def setup_telemetry():
+    """Configure Azure Application Insights telemetry."""
+    connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+    if not connection_string:
+        logger.warning("APPLICATIONINSIGHTS_CONNECTION_STRING not set, telemetry disabled")
+        return
+    
+    try:
+        # Azure Monitor automatically instruments FastAPI
+        configure_azure_monitor(
+            connection_string=connection_string,
+            logger_name="aca-chaos-lab",
+        )
+        
+        # Redis needs separate instrumentation
+        RedisInstrumentor().instrument()
+        
+        logger.info("Application Insights telemetry configured successfully")
+    except Exception as e:
+        logger.error(f"Failed to configure Application Insights: {e}")
+```
+
+#### 削減された複雑性
+
+- 手動のspan作成コードを削除
+- グローバルtracer変数を削除
+- 不要なinstrumentation optionsを削除
+- カスタムトレーサーの作成を削除
+- コード量を約50%削減（73行→36行）
+
+## 実装状況（2025-07-31）
 
 すべての機能が実装済みで、本番環境で稼働中：
 
