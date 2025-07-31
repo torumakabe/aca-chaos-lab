@@ -17,7 +17,6 @@ from app.telemetry import setup_telemetry
 # Global instances
 settings = Settings()
 redis_client: RedisClient | None = None
-tracer = None
 
 # Configure logging
 logging.basicConfig(
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     """Application lifespan manager."""
     global redis_client
 
@@ -66,7 +65,7 @@ app = FastAPI(
 )
 
 # Setup telemetry after app creation
-tracer = setup_telemetry(app)
+setup_telemetry(app)
 
 # Include chaos router
 app.include_router(chaos_router)
@@ -93,22 +92,9 @@ async def general_exception_handler(request: Request, exc: Exception):
 @app.get("/", response_model=MainResponse)
 async def root(request: Request):
     """Main endpoint that interacts with Redis."""
-    if tracer:
-        with tracer.start_as_current_span("root_endpoint") as span:
-            return await _root_with_span(span, request)
-    else:
-        return await _root_with_span(None, request)
-
-
-async def _root_with_span(span, request: Request):
-    """Internal root handler with optional span."""
     timestamp = datetime.now(UTC).isoformat()
-    redis_data = "Redis unavailable"
+    redis_data: str | None = "Redis unavailable"
     redis_error = None
-
-    if span:
-        span.set_attribute("app.endpoint", "/")
-        span.set_attribute("app.timestamp", timestamp)
 
     if redis_client and settings.redis_enabled:
         try:
@@ -120,21 +106,14 @@ async def _root_with_span(span, request: Request):
                 # Set initial data if not exists
                 redis_data = f"Data created at {timestamp}"
                 await redis_client.set(key, redis_data)
-                if span:
-                    span.add_event("Created new Redis data")
 
             # Increment request counter
-            counter = await redis_client.increment("chaos_lab:counter:requests")
-            if span:
-                span.set_attribute("app.request_count", counter)
+            await redis_client.increment("chaos_lab:counter:requests")
 
         except Exception as e:
             # Log error
             logger.error(f"Redis operation failed: {e}")
             redis_error = str(e)
-            if span:
-                span.record_exception(e)
-                span.set_attribute("app.redis_error", str(e))
 
     # If Redis is enabled but we have an error, return 503
     if settings.redis_enabled and redis_error:
@@ -157,22 +136,10 @@ async def _root_with_span(span, request: Request):
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health(request: Request):
+async def health(_: Request):
     """Health check endpoint."""
-    if tracer:
-        with tracer.start_as_current_span("health_check") as span:
-            return await _health_with_span(span, request)
-    else:
-        return await _health_with_span(None, request)
-
-
-async def _health_with_span(span, request: Request):
-    """Internal health check handler with optional span."""
     redis_connected = False
     redis_latency_ms = 0
-
-    if span:
-        span.set_attribute("app.endpoint", "/health")
 
     if redis_client and settings.redis_enabled:
         try:
@@ -182,21 +149,11 @@ async def _health_with_span(span, request: Request):
 
             redis_connected = True
             redis_latency_ms = int((end_time - start_time) * 1000)
-
-            if span:
-                span.set_attribute("app.redis_connected", True)
-                span.set_attribute("app.redis_latency_ms", redis_latency_ms)
-        except Exception as e:
+        except Exception:
             redis_connected = False
-            if span:
-                span.set_attribute("app.redis_connected", False)
-                span.record_exception(e)
 
     # Determine overall health status
     status = "healthy" if not settings.redis_enabled or redis_connected else "unhealthy"
-
-    if span:
-        span.set_attribute("app.health_status", status)
 
     # Build response
     health_response = HealthResponse(

@@ -222,7 +222,7 @@ async def hang(request: HangRequest, req: Request) -> JSONResponse:
 
 
 @router.post("/redis-reset", response_model=RedisResetResponse)
-async def reset_redis_connections(request: RedisResetRequest | None = None, req: Request = None):
+async def reset_redis_connections(req: Request, request: RedisResetRequest | None = None):
     """Reset Redis connections."""
     from app.main import redis_client
     
