@@ -139,3 +139,4 @@ output AZURE_CONTAINER_REGISTRY_LOGIN_SERVER string = containerRegistry.outputs.
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
 output AZURE_ALERT_5XX_ID string = alertRules.outputs.alert5xxId
 output AZURE_ALERT_RESPONSE_TIME_ID string = alertRules.outputs.alertResponseTimeId
+output AZURE_NSG_NAME string = network.outputs.nsgName

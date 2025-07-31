@@ -170,7 +170,11 @@ class RedisClient:
                     
                     # Disconnect all connections in the pool
                     # This is the standard way to reset connections
-                    closed_count = await pool.disconnect()
+                    # Note: pool.disconnect() returns None in redis-py
+                    await pool.disconnect()
+                    
+                    # Use our connection count tracker
+                    closed_count = self._connection_count
                     self._connection_count = 0
                     
                     logger.info(f"Redis connections reset: {closed_count} connections closed")
