@@ -22,9 +22,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Export environment variables for tests
-export TEST_BASE_URL="${AZURE_CONTAINER_APP_URI:-http://localhost:8000}"
+export TEST_BASE_URL="${SERVICE_APP_URI:-http://localhost:8000}"
 export TEST_RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
-export TEST_CONTAINER_APP_NAME="${AZURE_CONTAINER_APP_NAME:-}"
+export TEST_CONTAINER_APP_NAME="${SERVICE_APP_NAME:-}"
 export TEST_NSG_NAME="${AZURE_NSG_NAME:-}"
 
 echo -e "${BLUE}🧪 Running integration tests...${NC}"

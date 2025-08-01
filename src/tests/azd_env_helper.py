@@ -7,11 +7,11 @@ from typing import Optional
 
 def get_env_value(key: str, default: Optional[str] = None) -> Optional[str]:
     """Get value from azd env or fallback to environment variable.
-    
+
     Args:
         key: The environment variable key
         default: Default value if not found
-        
+
     Returns:
         The value from azd or environment variable, or default
     """
@@ -28,7 +28,7 @@ def get_env_value(key: str, default: Optional[str] = None) -> Optional[str]:
     except FileNotFoundError:
         # azd not available
         pass
-    
+
     # Fallback to environment variable
     return os.getenv(key, default)
 
@@ -44,24 +44,24 @@ def is_azd_available() -> bool:
 
 def load_azd_environment() -> dict:
     """Load all common azd environment values.
-    
+
     Returns:
         Dictionary of environment values
     """
     env = {}
-    
+
     if is_azd_available():
         print("Using Azure Developer CLI environment values...")
     else:
         print("Azure Developer CLI not found, using environment variables...")
-    
+
     # Load common values
     env['RESOURCE_GROUP'] = get_env_value('AZURE_RESOURCE_GROUP', os.getenv('RESOURCE_GROUP'))
-    env['CONTAINER_APP_NAME'] = get_env_value('AZURE_CONTAINER_APP_NAME', os.getenv('CONTAINER_APP_NAME'))
-    env['CONTAINER_APP_URI'] = get_env_value('AZURE_CONTAINER_APP_URI', os.getenv('CONTAINER_APP_URI'))
+    env['CONTAINER_APP_NAME'] = get_env_value('SERVICE_APP_NAME', os.getenv('CONTAINER_APP_NAME'))
+    env['CONTAINER_APP_URI'] = get_env_value('SERVICE_APP_URI', os.getenv('CONTAINER_APP_URI'))
     env['REDIS_HOST'] = get_env_value('AZURE_REDIS_HOST', os.getenv('REDIS_HOST'))
     env['LOCATION'] = get_env_value('AZURE_LOCATION', os.getenv('LOCATION'))
-    
+
     # For network operations, try to get NSG name
     if not os.getenv('NSG_NAME') and env['RESOURCE_GROUP']:
         try:
@@ -77,5 +77,5 @@ def load_azd_environment() -> dict:
             pass
     else:
         env['NSG_NAME'] = os.getenv('NSG_NAME')
-    
+
     return env

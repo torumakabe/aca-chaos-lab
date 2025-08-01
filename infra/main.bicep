@@ -10,10 +10,13 @@ param environmentName string
 param location string
 
 @description('The image name for the app service')
-param serviceAppImageName string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param containerAppImageName string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
 @description('Principal ID of the user running deployment (for ACR push access)')
 param principalId string = ''
+
+@description('Specifies if the container app already exists')
+param containerAppExists bool = false
 
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
@@ -80,7 +83,6 @@ module containerRegistry './modules/container-registry.bicep' = {
     registryName: '${abbrs.containerRegistryRegistries}${resourceToken}'
     vnetId: network.outputs.vnetId
     privateEndpointSubnetId: network.outputs.privateEndpointSubnetId
-    managedIdentityPrincipalId: managedIdentity.outputs.managedIdentityPrincipalId
     currentUserPrincipalId: principalId
   }
 }
@@ -97,20 +99,66 @@ module containerAppsEnvironment './modules/container-apps-environment.bicep' = {
   }
 }
 
-module containerApp './modules/container-app.bicep' = {
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
   name: 'container-app'
   scope: resourceGroup
   params: {
+    name: '${abbrs.appContainerApps}app-${resourceToken}'
     location: location
-    tags: tags
-    containerAppName: '${abbrs.appContainerApps}app-${resourceToken}'
+    tags: union(tags, { 'azd-service-name': 'app' })
     containerAppsEnvironmentName: containerAppsEnvironment.outputs.environmentName
-    containerImage: serviceAppImageName
-    redisHost: redis.outputs.redisHost
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-    managedIdentityName: managedIdentity.outputs.managedIdentityName
-    managedIdentityClientId: managedIdentity.outputs.managedIdentityClientId
     containerRegistryName: containerRegistry.outputs.registryName
+    imageName: !empty(containerAppImageName) ? containerAppImageName : ''
+    exists: containerAppExists
+    identityType: 'UserAssigned'
+    identityName: managedIdentity.outputs.managedIdentityName
+    identityPrincipalId: managedIdentity.outputs.managedIdentityPrincipalId
+    userAssignedIdentityResourceId: managedIdentity.outputs.managedIdentityId
+    env: [
+      {
+        name: 'REDIS_HOST'
+        value: redis.outputs.redisHost
+      }
+      {
+        name: 'REDIS_PORT'
+        value: '10000'
+      }
+      {
+        name: 'REDIS_SSL'
+        value: 'true'
+      }
+      {
+        name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+        secretRef: 'appinsights-connection-string'
+      }
+      {
+        name: 'APP_PORT'
+        value: '8000'
+      }
+      {
+        name: 'LOG_LEVEL'
+        value: 'INFO'
+      }
+      {
+        name: 'AZURE_CLIENT_ID'
+        value: managedIdentity.outputs.managedIdentityClientId
+      }
+    ]
+    secrets: {
+      secureList: [
+        {
+          name: 'appinsights-connection-string'
+          value: monitoring.outputs.applicationInsightsConnectionString
+        }
+      ]
+    }
+    targetPort: 8000
+    containerMinReplicas: 1
+    containerMaxReplicas: 1
+    containerCpuCoreCount: '0.25'
+    containerMemory: '0.5Gi'
+    ingressEnabled: true
+    external: true
   }
 }
 
@@ -120,7 +168,7 @@ module alertRules './modules/alert-rules.bicep' = {
   params: {
     location: location
     tags: tags
-    containerAppName: containerApp.outputs.containerAppName
+    containerAppName: containerApp.outputs.name
   }
 }
 
@@ -128,8 +176,8 @@ module alertRules './modules/alert-rules.bicep' = {
 
 output AZURE_LOCATION string = location
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
-output AZURE_CONTAINER_APP_NAME string = containerApp.outputs.containerAppName
-output AZURE_CONTAINER_APP_URI string = containerApp.outputs.containerAppUri
+output SERVICE_APP_NAME string = containerApp.outputs.name
+output SERVICE_APP_URI string = containerApp.outputs.uri
 output AZURE_MANAGED_IDENTITY_CLIENT_ID string = managedIdentity.outputs.managedIdentityClientId
 output AZURE_REDIS_HOST string = redis.outputs.redisHost
 output AZURE_REDIS_PORT int = redis.outputs.redisPort

@@ -14,11 +14,11 @@ source "${SCRIPT_DIR}/azd-env-helper.sh"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${SERVICE_APP_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
     RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
-    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
+    APP_NAME="${SERVICE_APP_NAME}"
 elif [ $# -lt 2 ]; then
     echo "Usage: $0 [resource-group] [container-app-name]"
     echo "  resource-group: Azure resource group name (or set via azd)"

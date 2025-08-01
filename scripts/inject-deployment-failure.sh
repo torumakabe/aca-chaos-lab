@@ -14,29 +14,29 @@ source "${SCRIPT_DIR}/azd-env-helper.sh"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${SERVICE_APP_NAME:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
     RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
-    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
-    FAILURE_TYPE="startup-failure"
-elif [ $# -eq 1 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${AZURE_CONTAINER_APP_NAME:-}" ]; then
+    APP_NAME="${SERVICE_APP_NAME}"
+    FAILURE_TYPE="wrong-image"
+elif [ $# -eq 1 ] && [ -n "${AZURE_RESOURCE_GROUP:-}" ] && [ -n "${SERVICE_APP_NAME:-}" ]; then
     # Use azd environment values with provided failure type
     echo "Using values from Azure Developer CLI environment"
     RESOURCE_GROUP="${AZURE_RESOURCE_GROUP}"
-    APP_NAME="${AZURE_CONTAINER_APP_NAME}"
+    APP_NAME="${SERVICE_APP_NAME}"
     FAILURE_TYPE="$1"
 elif [ $# -lt 2 ]; then
     echo "Usage: $0 [resource-group] [container-app-name] [failure-type]"
     echo "  resource-group: Azure resource group name (or set via azd)"
     echo "  container-app-name: Container App name (or set via azd)"
-    echo "  failure-type: Type of failure (startup-failure, bad-env)"
-    echo "                Default: startup-failure"
+    echo "  failure-type: Type of failure (wrong-image, bad-env)"
+    echo "                Default: wrong-image"
     exit 1
 else
     RESOURCE_GROUP="$1"
     APP_NAME="$2"
-    FAILURE_TYPE="${3:-startup-failure}"
+    FAILURE_TYPE="${3:-wrong-image}"
 fi
 
 # Colors for output
@@ -73,30 +73,42 @@ echo "Current memory: $CURRENT_MEMORY"
 REVISION_SUFFIX="chaos-$(date +%s)"
 
 case "$FAILURE_TYPE" in
-    "startup-failure")
-        echo -e "${YELLOW}💥 Creating revision with startup failure command...${NC}"
-        az containerapp update \
+    "wrong-image")
+        echo -e "${YELLOW}💥 Creating revision with wrong image configuration...${NC}"
+
+        # Use nginx image to simulate deployment failure
+        # nginx runs on port 80 but health probes expect port 8000, causing failure
+        az containerapp revision copy \
             --resource-group "$RESOURCE_GROUP" \
             --name "$APP_NAME" \
-            --command "/bin/sh" \
-            --args '["sh", "-c", "echo Simulating startup failure && exit 1"]' \
+            --from-revision "$(az containerapp revision list -g "$RESOURCE_GROUP" -n "$APP_NAME" --query "[?properties.active && !contains(name, 'chaos')].name" -o tsv | head -1)" \
             --revision-suffix "$REVISION_SUFFIX" \
+            --image "nginx:alpine" \
             --output none
+
+        FAILED_REVISION="${APP_NAME}--${REVISION_SUFFIX}"
+        echo -e "${GREEN}✅ Chaos revision created: $FAILED_REVISION${NC}"
         ;;
 
     "bad-env")
         echo -e "${YELLOW}💥 Creating revision with invalid environment variable...${NC}"
-        az containerapp update \
+
+        # Create revision with bad environment variables
+        az containerapp revision copy \
             --resource-group "$RESOURCE_GROUP" \
             --name "$APP_NAME" \
-            --set-env-vars "REDIS_HOST=" "REDIS_PORT=invalid" \
+            --from-revision "$(az containerapp revision list -g "$RESOURCE_GROUP" -n "$APP_NAME" --query "[?properties.active && !contains(name, 'chaos')].name" -o tsv | head -1)" \
             --revision-suffix "$REVISION_SUFFIX" \
+            --set-env-vars "REDIS_HOST=" "REDIS_PORT=invalid" \
             --output none
+
+        FAILED_REVISION="${APP_NAME}--${REVISION_SUFFIX}"
+        echo -e "${GREEN}✅ Chaos revision created: $FAILED_REVISION${NC}"
         ;;
 
     *)
         echo -e "${RED}❌ Unknown failure type: ${FAILURE_TYPE}${NC}"
-        echo "Valid types: startup-failure, bad-env"
+        echo "Valid types: wrong-image, bad-env"
         exit 1
         ;;
 esac
@@ -114,5 +126,13 @@ az containerapp revision list \
     --query "[?contains(name, '$REVISION_SUFFIX')].{Name:name, Active:properties.active, Status:properties.runningState, Replicas:properties.replicas}" \
     --output table
 
-echo -e "${YELLOW}💡 To restore the previous working revision, use:${NC}"
-echo "To restore, run: azd deploy"
+echo ""
+echo -e "${YELLOW}💡 To restore normal operation:${NC}"
+echo "1. Quick restore (recommended):"
+echo "   azd up"
+echo ""
+echo "2. Or manually deactivate chaos revision:"
+echo "   az containerapp revision deactivate -g $RESOURCE_GROUP -n $APP_NAME --revision \${FAILED_REVISION}"
+echo ""
+echo -e "${YELLOW}📊 To monitor revision status:${NC}"
+echo "   ./scripts/list-revisions.sh"

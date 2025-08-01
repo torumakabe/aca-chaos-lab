@@ -99,6 +99,31 @@ graph TB
 - カオス操作のカスタムメトリクスとイベント
 - Container Apps応答監視アラート（5xxエラー、応答時間）
 
+## デプロイメント戦略
+
+### Container App Upsert戦略
+
+このプロジェクトは、Azure Verified Module (AVM) の [Container App upsert戦略](https://learn.microsoft.com/azure/developer/azure-developer-cli/container-apps-workflows#container-app-upsert-strategy) を採用しています。
+
+#### 主な特徴
+
+- **インクリメンタル更新**: 既存のContainer Appを完全に置換せずに、変更された部分のみを更新
+- **設定保持**: 明示的に変更されない設定値（環境変数、スケーリング設定等）を自動的に保持
+- **条件付きイメージ更新**: 新しいコンテナイメージが指定された場合のみ更新、未指定時は既存イメージを保持
+- **ダウンタイム削減**: リソース全体の置換ではなく部分更新によりダウンタイムを最小化
+
+#### 実装技術
+
+- **Azure Verified Module**: `br/public:avm/ptn/azd/container-app-upsert:0.1.2`
+- **条件付きロジック**: `!empty(containerAppImageName) ? containerAppImageName : ''`
+- **azd統合**: Azure Developer CLIとの完全な互換性
+- **ヘルスプローブ自動設定**: postprovisionフックにより、AVMでサポートされていないヘルスプローブを自動的に追加
+  - Liveness Probe: 30秒遅延、10秒間隔で`/health`エンドポイントを監視
+  - Readiness Probe: 5秒遅延、5秒間隔で`/health`エンドポイントを監視
+  - 冪等性により、既存のプローブ設定を適切に検出・保持
+
+この戦略により、開発・テスト・本番環境での安定したデプロイメントと運用効率の向上を実現しています。
+
 ## 前提条件
 
 ### 必須ツール
@@ -111,6 +136,9 @@ graph TB
   - 障害注入スクリプトの実行
 - **[Docker](https://www.docker.com/get-started)**: v28.3以上
   - コンテナイメージのビルド（azdが自動的に使用）
+- **[jq](https://jqlang.github.io/jq/)**: v1.6以上
+  - JSONデータの処理とクエリ
+  - ヘルスプローブ自動設定スクリプトで使用
 - **Bash シェル**: 
   - Linux/macOS: 標準搭載
   - Windows: WSL2、Git Bash、またはAzure Cloud Shellを使用
@@ -177,12 +205,13 @@ graph TB
    - Container Registryへのプッシュ
    - Container Appへのデプロイ
    - マネージドIDの設定（Redisアクセスポリシー、ACR Pull権限）
+   - **ヘルスプローブの自動設定**: postprovisionフックにより、Liveness（30秒遅延、10秒間隔）とReadiness（5秒遅延、5秒間隔）プローブが`/health`エンドポイントに自動的に設定されます
 
 3. 動作確認：
    ```bash
    # プロジェクトルートディレクトリで実行
    # エンドポイントURLの取得
-   APP_URL=$(azd env get-value AZURE_CONTAINER_APP_URI)
+   APP_URL=$(azd env get-value SERVICE_APP_URI)
    
    # ヘルスチェック
    curl "${APP_URL}/health"
@@ -400,9 +429,9 @@ azdが管理する環境変数の確認と取得：
 azd env get-values
 
 # 特定の値を取得（例）
-azd env get-value AZURE_CONTAINER_APP_URI
+azd env get-value SERVICE_APP_URI
 azd env get-value AZURE_RESOURCE_GROUP
-azd env get-value AZURE_CONTAINER_APP_NAME
+azd env get-value SERVICE_APP_NAME
 ```
 
 ## トラブルシューティング

@@ -6,6 +6,7 @@
 - 2025-07-30: Redis接続リセット機能の設計追加
 - 2025-07-30: Container Apps応答監視アラート設計追加
 - 2025-07-31: OpenTelemetry実装のシンプル化
+- 2025-08-01: Container App upsert戦略設計追加
 
 ## アーキテクチャ概要
 
@@ -419,6 +420,7 @@ except Exception as e:
 - **コード品質**: ruff (linting & formatting)
 - **型チェック**: mypy
 - **依存管理**: uv, pyproject.toml
+- **JSON処理**: jq (スクリプトでのJSON操作)
 
 ## デプロイメントアーキテクチャ
 
@@ -976,3 +978,255 @@ output AZURE_ALERT_RESPONSE_TIME_ID string = alertRules.outputs.alertResponseTim
 4. **コスト考慮**:
    - メトリクスアラートは低コスト
    - 評価頻度の調整でコスト最適化可能
+
+## Container App Upsert戦略設計
+
+### 概要
+
+Azure Developer CLIでのContainer Appsデプロイにおいて、Azure Verified Module（AVM）の`container-app-upsert`パターンを採用する。これにより、インクリメンタル更新と設定保持を実現する。
+
+### 現在のアーキテクチャとの比較
+
+#### 現在の方式
+```mermaid
+graph TB
+    A[main.bicep] --> B[modules/container-app.bicep]
+    B --> C[Microsoft.App/containerApps]
+    C --> D[完全置換デプロイ]
+    
+    style D fill:#ffcccc
+```
+
+#### upsert戦略方式
+```mermaid
+graph TB
+    A[main.bicep] --> B[Azure Verified Module<br/>container-app-upsert]
+    B --> C[exists パラメータチェック]
+    C --> D{exists = true?}
+    D -->|Yes| E[既存App更新<br/>内部でexisting参照]
+    D -->|No| F[新規作成]
+    
+    E --> G[設定保持]
+    E --> H[条件付きイメージ更新]
+    F --> I[完全作成]
+    
+    style E fill:#ccffcc
+    style G fill:#ccffcc
+    style H fill:#ccffcc
+```
+
+### upsert戦略のメリットと実装方針
+
+1. **ダウンタイム削減**: Container App全体を置換せずに必要な部分のみ更新
+2. **設定保持**: 明示的に変更しない設定値を保持
+3. **条件付き更新**: イメージが指定されていない場合は既存イメージを維持
+4. **Azure推奨**: Microsoftが公式に推奨するベストプラクティス
+
+### existsパラメータの正しい理解
+
+**重要**: `exists`パラメータの値は、Azure Developer CLIがprovision実行前に自動判定します。
+
+#### Azure Developer CLI の自動存在確認メカニズム
+
+Azure Developer CLI は以下の動作を自動実行します：
+
+1. **preprovisionイベント**: `azd provision` 開始前にトリガー
+2. **リソース存在確認**: Container Appの存在をAzure Resource Managerに問い合わせ  
+3. **環境変数設定**: 結果を `SERVICE_APP_RESOURCE_EXISTS` に自動設定
+4. **パラメータ渡し**: Bicepテンプレートに正確な存在状態を渡す
+
+この仕組みにより、開発者が手動で存在状態を管理する必要がなく、Azure Developer CLIが全自動で適切なupsert戦略を選択します。
+
+#### 実際の動作フロー
+
+```mermaid
+sequenceDiagram
+    participant AZD as Azure Developer CLI
+    participant Azure as Azure Resource Manager
+    participant Env as .env ファイル
+    participant Bicep as main.bicep
+    participant AVM as container-app-upsert
+
+    Note over AZD: azd provision 開始
+    AZD->>AZD: preprovisionイベント実行
+    AZD->>Azure: Container App存在確認
+    Azure-->>AZD: 存在状況の応答
+    AZD->>Env: SERVICE_APP_RESOURCE_EXISTS設定
+    Note over AZD: provision段階実行
+    AZD->>Bicep: パラメータファイル経由でデプロイ
+    Bicep->>AVM: exists=正確な存在状況
+    AVM->>Azure: 適切なupsert処理実行
+```
+
+#### Microsoftサンプルでの実装例
+
+```bicep
+// Azure-Samples/todo-nodejs-mongo-aca より
+module api 'br/public:avm/ptn/azd/container-app-upsert:0.1.1' = {
+  name: 'api-container-app'
+  params: {
+    name: '${abbrs.appContainerApps}api-${resourceToken}'
+    exists: apiAppExists  // パラメータで明示的に指定
+    // その他のパラメータ...
+  }
+}
+```
+
+#### パラメータファイルでの制御
+
+```json
+// main.parameters.json
+{
+  "containerAppExists": {
+    "value": "${SERVICE_APP_RESOURCE_EXISTS:false}"  // azdが自動設定
+  }
+}
+```
+
+#### 実装戦略の実際
+
+Azure Developer CLI の自動管理により以下が実現されます：
+
+1. **初回デプロイ**: 
+   - Container App未存在 → `SERVICE_APP_RESOURCE_EXISTS="false"`
+   - 新規作成として処理
+   
+2. **更新デプロイ**: 
+   - Container App存在 → `SERVICE_APP_RESOURCE_EXISTS="true"`
+   - upsert（設定保持）として処理
+
+3. **環境変数による制御**:
+   - 通常は手動設定不要
+   - 特殊な場合のみ `azd env set SERVICE_APP_RESOURCE_EXISTS true`
+
+### デプロイフロー（正確版）
+
+```mermaid
+sequenceDiagram
+    participant AZD as azd deploy
+    participant Main as main.bicep
+    participant Upsert as container-app-upsert
+    participant ARM as Azure ARM
+    participant ACA as Container App
+    
+    AZD->>AZD: SERVICE_APP_RESOURCE_EXISTS確認
+    Note over AZD: 自動的にContainer App存在確認済み
+    AZD->>Main: Deploy with SERVICE_APP_RESOURCE_EXISTS
+    
+    alt SERVICE_APP_RESOURCE_EXISTS = "false" (初回)
+        Main->>Upsert: exists=false
+        Upsert->>ARM: 新規作成として処理
+        ARM->>ACA: Create Container App
+        Note over ARM,ACA: 新規リソース作成
+    else SERVICE_APP_RESOURCE_EXISTS = "true" (更新)
+        Main->>Upsert: exists=true
+        Upsert->>ARM: 既存リソース更新
+        ARM->>ACA: Update Container App
+        Note over ARM,ACA: 設定保持でupsert処理
+    end
+    
+    ACA->>Upsert: Operation result
+    Upsert->>Main: Deployment complete
+    Main->>AZD: Success
+    AZD->>AZD: SERVICE_APP_RESOURCE_EXISTS="true"更新
+```
+
+### パラメータマッピング
+
+| 現在のパラメータ | AVMパラメータ | 変更点 |
+|------------------|---------------|--------|
+| `containerAppName` | `name` | 直接マッピング |
+| `containerImage` | `imageName` | 条件付きロジック追加 |
+| `containerAppsEnvironmentName` | `containerAppsEnvironmentName` | 直接マッピング |
+| `redisHost` 等の環境変数 | `env[]` | 配列形式に変更 |
+| `managedIdentityName` | `managedIdentityName` | 直接マッピング |
+| ヘルスプローブ設定 | `probes[]` | 配列形式に変更 |
+
+### 実装アプローチ（修正版）
+
+#### 1. 推奨実装（シンプル戦略）
+
+```bicep
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
+  name: 'container-app'
+  scope: resourceGroup
+  params: {
+    name: '${abbrs.appContainerApps}app-${resourceToken}'
+    // 常にfalseでupsert動作を活用
+    exists: false
+    imageName: !empty(containerAppImageName) ? containerAppImageName : ''
+    // その他のパラメータ
+  }
+}
+```
+
+**利点**:
+- シンプルで理解しやすい
+- Azure Developer CLIの標準的な使用方法
+- 初回デプロイと更新デプロイで同じテンプレートが使用可能
+
+#### 2. 高度な制御（必要に応じて）
+
+```bicep
+@description('Specifies if the container app already exists')
+param appExists bool = false
+
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
+  name: 'container-app'
+  params: {
+    exists: appExists  // 環境変数やパラメータで制御
+    // その他のパラメータ
+  }
+}
+```
+
+**制御方法**:
+```bash
+# 新規デプロイ
+azd deploy  # exists=false（デフォルト）
+
+# 更新デプロイ（必要に応じて）
+azd env set APP_EXISTS true
+azd deploy
+```
+
+### 移行への推奨アプローチ
+
+#### 現在の実装の正確性確認
+
+現在の実装は既に正しく動作しており、Azure Developer CLI の標準的な動作パターンです：
+
+1. **自動管理**: Azure Developer CLI がリソース存在を自動確認
+2. **正確な制御**: `SERVICE_APP_RESOURCE_EXISTS` で適切なupsert戦略を実行
+3. **Microsoft準拠**: 公式の命名規則と動作パターンに一致
+
+#### main.bicepの最終実装
+
+```bicep
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
+  name: 'container-app'
+  scope: resourceGroup
+  params: {
+    name: '${abbrs.appContainerApps}app-${resourceToken}'
+    location: location
+    tags: union(tags, { 'azd-service-name': 'app' })
+    containerAppsEnvironmentName: containerAppsEnvironment.outputs.environmentName
+    containerRegistryName: containerRegistry.outputs.registryName
+    imageName: !empty(containerAppImageName) ? containerAppImageName : ''
+    exists: containerAppExists // Azure Developer CLIが自動判定した結果
+    identityType: 'UserAssigned'
+    identityName: managedIdentity.outputs.managedIdentityName
+    identityPrincipalId: managedIdentity.outputs.managedIdentityPrincipalId
+    userAssignedIdentityResourceId: managedIdentity.outputs.managedIdentityId
+    // 環境変数とその他の設定...
+  }
+}
+```
+
+#### 動作の確認方法
+
+1. **初回デプロイ**: `azd up` - Azure Developer CLI が自動的に新規作成を認識
+2. **更新デプロイ**: `azd deploy` - Azure Developer CLI が既存リソースを認識してupsert実行
+3. **イメージ更新**: 新しいイメージをビルド後 `azd deploy` - 設定保持で更新
+
+すべてのケースで Azure Developer CLI が適切な `SERVICE_APP_RESOURCE_EXISTS` 値を設定し、内部的に最適なupsert処理が実行されます。
