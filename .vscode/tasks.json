@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Validate Bicep Templates",
+			"type": "shell",
+			"command": "az bicep build --file infra/main.bicep",
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

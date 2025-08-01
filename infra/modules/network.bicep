@@ -6,18 +6,18 @@ var vnetAddressPrefix = '10.0.0.0/16'
 var containerAppsSubnetPrefix = '10.0.1.0/24'
 var privateEndpointSubnetPrefix = '10.0.2.0/24'
 
-resource nsg 'Microsoft.Network/networkSecurityGroups@2023-05-01' = {
+resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'nsg-${vnetName}-chaos'
   location: location
   tags: tags
   properties: {
     securityRules: []
-    // デフォルトルールで送信は許可される
-    // Redis障害注入時に送信拒否ルールを動的に追加
+    // Default rules allow outbound traffic
+    // Dynamic deny rules added during Redis failure injection
   }
 }
 
-resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
   location: location
   tags: tags
