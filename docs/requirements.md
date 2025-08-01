@@ -11,6 +11,7 @@ Azure SRE Agentの自動検出・診断・対応機能を検証する。
 - 2025-07-28: 実装状況の確認と要件の検証
 - 2025-07-30: Redis接続リセットAPI要件追加（REQ-010）
 - 2025-07-30: Container Apps応答監視アラート要件追加（REQ-017）
+- 2025-08-01: Container App upsert戦略要件追加（REQ-018-021）
 
 ## 機能要件
 
@@ -151,18 +152,24 @@ Azure Developer CLIを使用するとき、システムは以下を提供する�
 ### 監視要件
 
 #### REQ-017: Container Apps応答監視アラート
-システムは常に以下のアラートルールを含むものとする：
-- 5xx系ステータスコードが持続的に発生した場合のメトリクスアラート：
-  - Container Appsの「Requests」メトリクスを使用
-  - StatusCodeCategoryディメンションで「5xx」をフィルタリング
-  - 評価頻度1分、ウィンドウサイズ5分で監視
-  - 閾値を超えた場合にアラート発生
-- 平均応答時間が5秒を超えた場合のメトリクスアラート：
-  - Container Appsの「ResponseTime」メトリクスを使用
-  - 平均応答時間が5000ミリ秒を超えた場合にアラート
-  - 評価頻度1分、ウィンドウサイズ5分で監視
-- アラートの自動緩和機能を有効化
-- アクショングループの定義は不要（将来の拡張用）
+Container Appsが異常な応答をしたとき、システムは以下のアラートを発生するものとする：
+- 5分間の5XXエラー率が1%を超えた場合のアラート
+- 5分間の平均応答時間が5秒を超えた場合のアラート
+- Azure MonitorアクショングループでのEmail通知設定
+
+### デプロイメント要件
+
+#### REQ-018: Container App Upsert戦略
+システムは常にAzure Verified Moduleの`container-app-upsert`パターンを使用してContainer Appsをデプロイするものとする
+
+#### REQ-019: インクリメンタル更新  
+新しいコンテナイメージが指定されたとき、システムは既存のContainer Appを完全に置換せずに更新するものとする
+
+#### REQ-020: 設定保持
+Container App更新が実行されたとき、システムは明示的に変更されない設定値を保持するものとする
+
+#### REQ-021: 条件付きイメージ更新
+コンテナイメージが指定されていない場合、システムは既存のコンテナイメージを保持するものとする
 
 ## 制約事項
 
@@ -183,7 +190,10 @@ Log AnalyticsとApplication Insightsのプライベートエンドポイント�
 #### CON-004: CLI ツール
 システムの管理にはAzure CLIを使用し、Azure PowerShellは使用しないものとする
 
-#### CON-005: 負荷テストツール
+#### CON-005: JSON処理ツール
+スクリプトでのJSON操作にはjqツールを使用し、Azure CLIの出力解析や設定ファイルの操作を行うものとする
+
+#### CON-006: 負荷テストツール
 負荷生成はLocustを使用し、ローカル環境から実行するものとする
 
 ## 受け入れ基準
@@ -294,6 +304,12 @@ Log AnalyticsとApplication Insightsのプライベートエンドポイント�
 - ✅ REQ-015: 負荷テスト環境 - Locustシナリオ実装済み
 - ✅ REQ-016: ドキュメント - README.mdとドキュメント完備
 - ✅ REQ-017: Container Apps応答監視アラート - alert-rules.bicepモジュールで実装済み
+
+### 新規要件（2025-08-01追加）
+- ✅ REQ-018: Container App upsert戦略 - Azure Verified Module (br/public:avm/ptn/azd/container-app-upsert:0.1.2) 導入完了
+- ✅ REQ-019: インクリメンタル更新 - upsert戦略による条件付き更新実装完了
+- ✅ REQ-020: 設定保持 - AVMモジュールによる既存設定保持実装完了
+- ✅ REQ-021: 条件付きイメージ更新 - `!empty(containerAppImageName)`による条件分岐実装完了
 
 ### 残作業
 すべての要件が完了しました。

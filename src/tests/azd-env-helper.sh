@@ -35,10 +35,10 @@ load_azd_environment() {
         # Export common values
         AZURE_RESOURCE_GROUP=$(get_env_value "AZURE_RESOURCE_GROUP" "${AZURE_RESOURCE_GROUP:-}")
         export AZURE_RESOURCE_GROUP
-        AZURE_CONTAINER_APP_NAME=$(get_env_value "AZURE_CONTAINER_APP_NAME" "${AZURE_CONTAINER_APP_NAME:-}")
-        export AZURE_CONTAINER_APP_NAME
-        AZURE_CONTAINER_APP_URI=$(get_env_value "AZURE_CONTAINER_APP_URI" "${AZURE_CONTAINER_APP_URI:-}")
-        export AZURE_CONTAINER_APP_URI
+        SERVICE_APP_NAME=$(get_env_value "SERVICE_APP_NAME" "${SERVICE_APP_NAME:-}")
+        export SERVICE_APP_NAME
+        SERVICE_APP_URI=$(get_env_value "SERVICE_APP_URI" "${SERVICE_APP_URI:-}")
+        export SERVICE_APP_URI
         AZURE_REDIS_HOST=$(get_env_value "AZURE_REDIS_HOST" "${AZURE_REDIS_HOST:-}")
         export AZURE_REDIS_HOST
         AZURE_LOCATION=$(get_env_value "AZURE_LOCATION" "${AZURE_LOCATION:-}")

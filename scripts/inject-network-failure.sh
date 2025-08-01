@@ -86,19 +86,19 @@ echo -e "${YELLOW}⏳ Waiting 30 seconds for NSG rule to propagate...${NC}"
 sleep 30
 
 # Reset Redis connections using the chaos API
-if [ -n "${AZURE_CONTAINER_APP_URI:-}" ]; then
+if [ -n "${SERVICE_APP_URI:-}" ]; then
     echo -e "${YELLOW}🔄 Resetting Redis connections via API to apply network rules...${NC}"
-    
+
     # Call the Redis reset API
-    echo -e "${YELLOW}📡 Calling Redis reset API at ${AZURE_CONTAINER_APP_URI}/chaos/redis-reset${NC}"
-    
+    echo -e "${YELLOW}📡 Calling Redis reset API at ${SERVICE_APP_URI}/chaos/redis-reset${NC}"
+
     # Use curl to call the API with retry logic
     MAX_RETRIES=3
     RETRY_COUNT=0
     SUCCESS=false
-    
+
     while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
-        if curl -X POST "${AZURE_CONTAINER_APP_URI}/chaos/redis-reset" \
+        if curl -X POST "${SERVICE_APP_URI}/chaos/redis-reset" \
             -H "Content-Type: application/json" \
             -d '{"force": true}' \
             -s -w "\nHTTP Status: %{http_code}\n" \
@@ -119,7 +119,7 @@ if [ -n "${AZURE_CONTAINER_APP_URI:-}" ]; then
         fi
     done
 else
-    echo -e "${YELLOW}⚠️  AZURE_CONTAINER_APP_URI not set. Please reset Redis connections manually:${NC}"
+    echo -e "${YELLOW}⚠️  SERVICE_APP_URI not set. Please reset Redis connections manually:${NC}"
     echo "curl -X POST https://<your-app-uri>/chaos/redis-reset -H 'Content-Type: application/json' -d '{\"force\": true}'"
 fi
 

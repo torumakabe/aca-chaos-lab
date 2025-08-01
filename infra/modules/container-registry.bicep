@@ -3,7 +3,6 @@ param tags object
 param registryName string
 param vnetId string
 param privateEndpointSubnetId string
-param managedIdentityPrincipalId string
 param currentUserPrincipalId string = ''
 
 resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
@@ -11,22 +10,12 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
   location: location
   tags: tags
   sku: {
-    name: 'Premium'  // Premium SKU required for private endpoints
+    name: 'Premium' // Premium SKU required for private endpoints
   }
   properties: {
-    adminUserEnabled: false  // Use managed identity authentication
-    publicNetworkAccess: 'Enabled'  // Enable public access for image push
+    adminUserEnabled: false // Use managed identity authentication
+    publicNetworkAccess: 'Enabled' // Enable public access for image push
     networkRuleBypassOptions: 'AzureServices'
-  }
-}
-
-// Grant AcrPull role to managed identity
-resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistry.id, managedIdentityPrincipalId, '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-  scope: containerRegistry
-  properties: {
-    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-    principalId: managedIdentityPrincipalId
   }
 }
 

@@ -14,6 +14,7 @@
    - Azure CLI v2.75.0以上
    - Azure Developer CLI (`azd`) v1.18.0以上
    - Docker v28.3以上
+   - jq v1.6以上（JSONデータ処理）
    - Git
    - Bash シェル（Linux/macOS標準搭載、WindowsはWSL2/Git Bash/Azure Cloud Shell）
    - Python 3.13以上（負荷テスト実行用）
@@ -292,3 +293,45 @@ azd down --purge
 # または手動で
 az group delete --name $RESOURCE_GROUP --yes
 ```
+
+## Container App Upsert戦略
+
+このプロジェクトは、Azure Verified Module (AVM) の Container App upsert戦略を使用してデプロイされます。
+
+### upsert戦略の特徴
+
+- **インクリメンタル更新**: 既存のContainer Appを完全に置換せずに、変更された部分のみを更新
+- **設定保持**: 明示的に変更されない設定値を自動的に保持
+- **条件付きイメージ更新**: 新しいコンテナイメージが指定された場合のみ更新、そうでなければ既存イメージを維持
+- **ダウンタイム削減**: 全体の置換ではなく部分更新によりダウンタイムを最小化
+
+### 実装詳細
+
+```bicep
+// AVMモジュールの使用
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
+  name: 'container-app'
+  params: {
+    // 条件付きイメージ更新ロジック
+    imageName: !empty(containerAppImageName) ? containerAppImageName : ''
+    exists: false // モジュールが自動的に存在を判定
+    // その他のパラメータ...
+  }
+}
+```
+
+### デプロイ動作
+
+1. **初回デプロイ**: 通常のContainer App作成と同じ動作
+2. **更新デプロイ**: 
+   - 新しいイメージが指定された場合: イメージを更新
+   - イメージが空の場合: 既存のイメージを保持
+   - 環境変数等の変更: 指定された変更のみ適用
+   - 未指定の設定: 既存の値を保持
+
+### 利点
+
+- **運用効率**: 不要な設定変更を避けて運用の安定性を向上
+- **Azure推奨**: Microsoftが公式に推奨するベストプラクティス
+- **azd統合**: Azure Developer CLIとの完全な互換性
+- **保守性**: 標準化されたAVMモジュールによる保守の簡素化
