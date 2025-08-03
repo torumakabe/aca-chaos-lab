@@ -25,12 +25,14 @@ class Settings(BaseSettings):
     )
     redis_ssl: bool = os.getenv("REDIS_SSL", "true").lower() == "true"
     redis_enabled: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
-    
+
     # Redis connection pool settings
     redis_max_connections: int = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
     redis_socket_timeout: int = int(os.getenv("REDIS_SOCKET_TIMEOUT", "3"))
-    redis_socket_connect_timeout: int = int(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "3"))
-    
+    redis_socket_connect_timeout: int = int(
+        os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "3")
+    )
+
     # Redis retry settings (using redis-py's built-in retry mechanism)
     redis_max_retries: int = int(os.getenv("REDIS_MAX_RETRIES", "1"))
     redis_backoff_base: float = float(os.getenv("REDIS_BACKOFF_BASE", "1"))
@@ -47,3 +49,13 @@ class Settings(BaseSettings):
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
         os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"),
     )
+
+    # Telemetry settings
+    telemetry_enabled: bool = os.getenv("TELEMETRY_ENABLED", "true").lower() == "true"
+    custom_metrics_enabled: bool = (
+        os.getenv("CUSTOM_METRICS_ENABLED", "true").lower() == "true"
+    )
+    log_telemetry_integration: bool = (
+        os.getenv("LOG_TELEMETRY_INTEGRATION", "true").lower() == "true"
+    )
+    telemetry_sampling_rate: float = float(os.getenv("TELEMETRY_SAMPLING_RATE", "0.1"))

@@ -7,6 +7,7 @@
 - 2025-07-30: Container Apps応答監視アラート設計追加
 - 2025-07-31: OpenTelemetry実装のシンプル化
 - 2025-08-01: Container App upsert戦略設計追加
+- 2025-08-03: テレメトリとロギング一貫性向上設計追加
 
 ## アーキテクチャ概要
 
@@ -726,44 +727,74 @@ except Exception as e:
 - Redis読み書き操作を含むAPI
 
 
-### OpenTelemetry実装（2025-07-31更新）
+### OpenTelemetry実装（2025-08-03更新）
 
 #### 概要
 
-Azure Monitor OpenTelemetryの自動計装機能を使用してシンプルな実装を実現しています：
+Azure Monitor OpenTelemetryの標準サンプリング機能と最適化されたRedisアクセスパターンを実装：
 
+- **標準サンプリング**: `OTEL_TRACES_SAMPLER=traceidratio`環境変数による10%サンプリング
 - **自動計装**: FastAPIは自動的に計装され、手動のspan作成は不要
-- **最小限の設定**: `configure_azure_monitor()`の呼び出しのみで設定完了
-- **Redis計装**: RedisInstrumentor().instrument()で個別に設定
+- **Redis最適化**: ヘルスチェックキャッシュとリクエストカウンター削減によるパフォーマンス向上
+- **コスト最適化**: 負荷テスト時のテレメトリコストを90%削減
 
 #### 実装詳細
 
 ```python
-# telemetry.py - シンプル化されたセットアップ
-from azure.monitor.opentelemetry import configure_azure_monitor
-from opentelemetry.instrumentation.redis import RedisInstrumentor
-
-def setup_telemetry():
-    """Configure Azure Application Insights telemetry."""
-    connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
-    if not connection_string:
-        logger.warning("APPLICATIONINSIGHTS_CONNECTION_STRING not set, telemetry disabled")
-        return
+# telemetry.py - 標準OpenTelemetryサンプリング
+def setup_telemetry(app=None):
+    """Configure Azure Application Insights telemetry with OpenTelemetry standard sampling."""
+    sampling_rate = float(os.getenv("OTEL_TRACES_SAMPLER_ARG", "0.1"))
     
-    try:
-        # Azure Monitor automatically instruments FastAPI
-        configure_azure_monitor(
-            connection_string=connection_string,
-            logger_name="aca-chaos-lab",
+    # Set OpenTelemetry standard environment variables for sampling
+    if "OTEL_TRACES_SAMPLER" not in os.environ:
+        os.environ["OTEL_TRACES_SAMPLER"] = "traceidratio"
+        os.environ["OTEL_TRACES_SAMPLER_ARG"] = str(sampling_rate)
+    
+    # Configure Azure Monitor (respects OTEL environment variables)
+    configure_azure_monitor(
+        connection_string=connection_string,
+        logger_name="aca-chaos-lab",
+        resource=resource,
+    )
+    
+    # Instrument FastAPI with health check exclusion
+    if app:
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health",
         )
-        
-        # Redis needs separate instrumentation
-        RedisInstrumentor().instrument()
-        
-        logger.info("Application Insights telemetry configured successfully")
-    except Exception as e:
-        logger.error(f"Failed to configure Application Insights: {e}")
+    
+    # Redis instrumentation
+    RedisInstrumentor().instrument()
 ```
+
+#### Redis最適化
+
+```python
+# main.py - ヘルスチェックキャッシュ（5秒TTL）
+_HEALTH_CACHE_TTL = 5.0  # seconds
+
+def _is_health_cache_valid() -> bool:
+    """Check if cached health status is still valid."""
+    if _health_cache.get("timestamp") is None:
+        return False
+    
+    current_time = asyncio.get_event_loop().time()
+    return (current_time - _health_cache["timestamp"]) < _HEALTH_CACHE_TTL
+
+# Redis optimization: Only increment counter for ~10% of requests to reduce load
+# This represents a 90% reduction in Redis operations for request counting
+if hash(timestamp[:19]) % 10 == 0:  # ~10% of requests
+    await redis_client.increment("chaos_lab:counter:requests")
+```
+
+#### パフォーマンス改善
+
+- **テレメトリサンプリング**: 標準10%サンプリングでコスト最適化
+- **ヘルスチェック**: 5秒キャッシュでRedis PING頻度を大幅削減
+- **リクエストカウンター**: 90%削減により不要なRedis操作を削除
+- **コード品質**: 手動span管理削除によりコードの保守性向上
 
 #### 削減された複雑性
 
@@ -1230,3 +1261,118 @@ module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
 3. **イメージ更新**: 新しいイメージをビルド後 `azd deploy` - 設定保持で更新
 
 すべてのケースで Azure Developer CLI が適切な `SERVICE_APP_RESOURCE_EXISTS` 値を設定し、内部的に最適なupsert処理が実行されます。
+
+## テレメトリとロギング一貫性向上設計
+
+### 目的
+OpenTelemetryを活用したテレメトリとロギングの一貫性を向上し、SREエージェントによる自動検出・診断を支援する。
+
+### アーキテクチャ
+
+```mermaid
+graph TD
+    A[FastAPI Application] --> B[OpenTelemetry Instrumentation]
+    B --> C[Azure Application Insights]
+    
+    D[Redis Operations] --> E[Custom Metrics]
+    E --> B
+    
+    F[Chaos Operations] --> G[Business Metrics]
+    G --> B
+    
+    H[Exception Handler] --> I[Span Error Recording]
+    I --> B
+    
+    J[Logging] --> K[OpenTelemetry Log Integration]
+    K --> B
+```
+
+### 実装コンポーネント
+
+#### 1. 統一的な例外処理（REQ-TEL-001）
+**目的**: 未処理例外時にOpenTelemetryのスパンにエラー情報を記録
+
+**実装場所**: 
+- `app/main.py` - グローバル例外ハンドラー
+- `app/telemetry.py` - スパンエラー記録ヘルパー
+
+**データフロー**:
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Handler as Exception Handler
+    participant Span as OpenTelemetry Span
+    participant AI as Application Insights
+    
+    App->>Handler: Exception occurs
+    Handler->>Span: Record error details
+    Handler->>App: Return error response
+    Span->>AI: Send error telemetry
+```
+
+#### 2. ビジネスメトリクス（REQ-TEL-002）
+**目的**: Redis接続状態とカオス機能の実行状況をカスタムメトリクスとして送信
+
+**実装場所**: 
+- `app/redis_client.py` - Redis接続メトリクス
+- `app/chaos.py` - カオス実行メトリクス
+- `app/telemetry.py` - メトリクス送信ヘルパー
+
+**メトリクス定義**:
+- `redis_connection_status` (gauge): Redis接続状態 (0/1)
+- `redis_connection_latency_ms` (histogram): Redis応答時間
+- `chaos_operation_active` (gauge): アクティブなカオス操作数
+- `chaos_operation_duration_seconds` (histogram): カオス操作実行時間
+
+#### 3. ログレベルの一貫性（REQ-TEL-003）
+**目的**: OpenTelemetryのログ計装設定と一致するログレベルを使用
+
+**実装場所**: 
+- `app/telemetry.py` - 統一ログ設定
+- `app/config.py` - 設定管理
+
+### エラー処理マトリクス
+
+| エラータイプ | ログレベル | テレメトリ送信 | スパン状態 | 期待される応答 |
+|-------------|-----------|---------------|-----------|---------------|
+| Redis接続失敗 | ERROR | カスタムメトリクス | ERROR | 503 Service Unavailable |
+| 認証失敗 | ERROR | エラースパン | ERROR | 503 Service Unavailable |
+| タイムアウト | WARNING | カスタムメトリクス | ERROR | 503 Service Unavailable |
+| 未処理例外 | ERROR | エラースパン + ログ | ERROR | 500 Internal Server Error |
+| カオス操作失敗 | ERROR | ビジネスメトリクス | ERROR | 500 Internal Server Error |
+
+### インターフェース定義
+
+#### テレメトリヘルパー関数
+```python
+# app/telemetry.py
+def record_span_error(exc: Exception, span_name: str = None) -> None
+def record_redis_metrics(connected: bool, latency_ms: int) -> None
+def record_chaos_metrics(operation: str, active: bool, duration_seconds: float = None) -> None
+```
+
+#### 設定拡張
+```python
+# app/config.py
+class Settings:
+    # 既存設定...
+    
+    # テレメトリ設定
+    telemetry_enabled: bool = True
+    custom_metrics_enabled: bool = True
+    log_telemetry_integration: bool = True
+```
+
+### 単体テスト戦略
+
+#### テストカテゴリ
+1. **メトリクス送信テスト**: カスタムメトリクスが正しく送信されることを確認
+2. **スパンエラー記録テスト**: 例外時にスパンが適切にマークされることを確認
+3. **ログ統合テスト**: ログとテレメトリの連携を確認
+4. **設定テスト**: 各設定値での動作を確認
+
+#### モックとスタブ
+- OpenTelemetryトレーサーのモック
+- Azure Monitor エクスポーターのスタブ
+- Redis接続のモック
+- 例外シナリオのシミュレーション

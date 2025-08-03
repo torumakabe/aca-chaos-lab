@@ -2,10 +2,9 @@
 
 import os
 import subprocess
-from typing import Optional
 
 
-def get_env_value(key: str, default: Optional[str] = None) -> Optional[str]:
+def get_env_value(key: str, default: str | None = None) -> str | None:
     """Get value from azd env or fallback to environment variable.
 
     Args:
@@ -21,7 +20,7 @@ def get_env_value(key: str, default: Optional[str] = None) -> Optional[str]:
             ["azd", "env", "get-value", key],
             capture_output=True,
             text=True,
-            check=False
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -56,26 +55,43 @@ def load_azd_environment() -> dict:
         print("Azure Developer CLI not found, using environment variables...")
 
     # Load common values
-    env['RESOURCE_GROUP'] = get_env_value('AZURE_RESOURCE_GROUP', os.getenv('RESOURCE_GROUP'))
-    env['CONTAINER_APP_NAME'] = get_env_value('SERVICE_APP_NAME', os.getenv('CONTAINER_APP_NAME'))
-    env['CONTAINER_APP_URI'] = get_env_value('SERVICE_APP_URI', os.getenv('CONTAINER_APP_URI'))
-    env['REDIS_HOST'] = get_env_value('AZURE_REDIS_HOST', os.getenv('REDIS_HOST'))
-    env['LOCATION'] = get_env_value('AZURE_LOCATION', os.getenv('LOCATION'))
+    env["RESOURCE_GROUP"] = get_env_value(
+        "AZURE_RESOURCE_GROUP", os.getenv("RESOURCE_GROUP")
+    )
+    env["CONTAINER_APP_NAME"] = get_env_value(
+        "SERVICE_APP_NAME", os.getenv("CONTAINER_APP_NAME")
+    )
+    env["CONTAINER_APP_URI"] = get_env_value(
+        "SERVICE_APP_URI", os.getenv("CONTAINER_APP_URI")
+    )
+    env["REDIS_HOST"] = get_env_value("AZURE_REDIS_HOST", os.getenv("REDIS_HOST"))
+    env["LOCATION"] = get_env_value("AZURE_LOCATION", os.getenv("LOCATION"))
 
     # For network operations, try to get NSG name
-    if not os.getenv('NSG_NAME') and env['RESOURCE_GROUP']:
+    if not os.getenv("NSG_NAME") and env["RESOURCE_GROUP"]:
         try:
             result = subprocess.run(
-                ["az", "network", "nsg", "list", "-g", env['RESOURCE_GROUP'], "--query", "[0].name", "-o", "tsv"],
+                [
+                    "az",
+                    "network",
+                    "nsg",
+                    "list",
+                    "-g",
+                    env["RESOURCE_GROUP"],
+                    "--query",
+                    "[0].name",
+                    "-o",
+                    "tsv",
+                ],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
             )
             if result.returncode == 0 and result.stdout.strip():
-                env['NSG_NAME'] = result.stdout.strip()
+                env["NSG_NAME"] = result.stdout.strip()
         except:
             pass
     else:
-        env['NSG_NAME'] = os.getenv('NSG_NAME')
+        env["NSG_NAME"] = os.getenv("NSG_NAME")
 
     return env

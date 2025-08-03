@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.36.177.2456",
-      "templateHash": "1207762546189117704"
+      "version": "0.36.1.42791",
+      "templateHash": "5523919191333733969"
     }
   },
   "parameters": {
@@ -102,8 +102,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "7330387774892020842"
+              "version": "0.36.1.42791",
+              "templateHash": "12697430909575526724"
             }
           },
           "parameters": {
@@ -176,13 +176,12 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "16610068992443579087"
+              "version": "0.36.1.42791",
+              "templateHash": "9802604143861259678"
             }
           },
           "parameters": {
@@ -199,8 +198,8 @@
               "type": "string"
             }
           },
-          "resources": {
-            "logAnalytics": {
+          "resources": [
+            {
               "type": "Microsoft.OperationalInsights/workspaces",
               "apiVersion": "2023-09-01",
               "name": "[parameters('logAnalyticsName')]",
@@ -215,7 +214,7 @@
                 "publicNetworkAccessForQuery": "Enabled"
               }
             },
-            "applicationInsights": {
+            {
               "type": "Microsoft.Insights/components",
               "apiVersion": "2020-02-02",
               "name": "[parameters('applicationInsightsName')]",
@@ -229,10 +228,10 @@
                 "publicNetworkAccessForQuery": "Enabled"
               },
               "dependsOn": [
-                "logAnalytics"
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
               ]
             }
-          },
+          ],
           "outputs": {
             "logAnalyticsWorkspaceId": {
               "type": "string",
@@ -244,7 +243,7 @@
             },
             "applicationInsightsConnectionString": {
               "type": "securestring",
-              "value": "[reference('applicationInsights').ConnectionString]"
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('applicationInsightsName')), '2020-02-02').ConnectionString]"
             }
           }
         }
@@ -280,8 +279,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "594591038008746935"
+              "version": "0.36.1.42791",
+              "templateHash": "12153997917318029664"
             }
           },
           "parameters": {
@@ -419,8 +418,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "1828308622371590560"
+              "version": "0.36.1.42791",
+              "templateHash": "14343588941663496449"
             }
           },
           "parameters": {
@@ -620,8 +619,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "8266628926706732809"
+              "version": "0.36.1.42791",
+              "templateHash": "9628402431321380768"
             }
           },
           "parameters": {
@@ -785,7 +784,7 @@
             "value": "[format('{0}{1}', variables('abbrs').appManagedEnvironments, variables('resourceToken'))]"
           },
           "logAnalyticsWorkspaceName": {
-            "value": "[reference('monitoring').outputs.logAnalyticsWorkspaceName.value]"
+            "value": "[listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName'))), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').logAnalyticsWorkspaceName]"
           },
           "containerAppsSubnetId": {
             "value": "[reference('network').outputs.containerAppsSubnetId.value]"
@@ -797,8 +796,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "417155018412917943"
+              "version": "0.36.1.42791",
+              "templateHash": "9666678139038518048"
             }
           },
           "parameters": {
@@ -942,7 +941,7 @@
               "secureList": [
                 {
                   "name": "appinsights-connection-string",
-                  "value": "[listOutputsWithSecureValues('monitoring', '2022-09-01').applicationInsightsConnectionString]"
+                  "value": "[listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName'))), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').applicationInsightsConnectionString]"
                 }
               ]
             }
@@ -3184,8 +3183,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.36.177.2456",
-              "templateHash": "14453005702626709826"
+              "version": "0.36.1.42791",
+              "templateHash": "4628688138049447610"
             }
           },
           "parameters": {
@@ -3305,11 +3304,11 @@
       "type": "string",
       "value": "[format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName'))]"
     },
-    "AZURE_CONTAINER_APP_NAME": {
+    "SERVICE_APP_NAME": {
       "type": "string",
       "value": "[reference('containerApp').outputs.name.value]"
     },
-    "AZURE_CONTAINER_APP_URI": {
+    "SERVICE_APP_URI": {
       "type": "string",
       "value": "[reference('containerApp').outputs.uri.value]"
     },
@@ -3335,7 +3334,7 @@
     },
     "APPLICATIONINSIGHTS_CONNECTION_STRING": {
       "type": "securestring",
-      "value": "[listOutputsWithSecureValues('monitoring', '2022-09-01').applicationInsightsConnectionString]"
+      "value": "[listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('{0}{1}', variables('abbrs').resourcesResourceGroups, parameters('environmentName'))), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').applicationInsightsConnectionString]"
     },
     "AZURE_ALERT_5XX_ID": {
       "type": "string",
