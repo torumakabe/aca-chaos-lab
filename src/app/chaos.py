@@ -332,8 +332,8 @@ async def get_status():
     redis_status = {"connected": False, "connection_count": 0, "last_reset": None}
     if redis_client:
         try:
-            status = await redis_client.get_connection_status()
-            redis_status.update(status)
+            redis_status["connected"] = await redis_client.is_connected()
+            redis_status["connection_count"] = redis_client._connection_count
         except Exception as e:
             logger.error(f"Failed to get Redis status: {e}")
 

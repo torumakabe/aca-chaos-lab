@@ -273,10 +273,9 @@ class TestRedisReset:
     @patch("app.main.redis_client")
     def test_status_with_redis(self, mock_redis_client, client):
         """Test status endpoint includes Redis information."""
-        # Mock get_connection_status
-        mock_redis_client.get_connection_status = AsyncMock(
-            return_value={"connected": True, "connection_count": 2}
-        )
+        # Mock is_connected and _connection_count
+        mock_redis_client.is_connected = AsyncMock(return_value=True)
+        mock_redis_client._connection_count = 2
 
         # Set last reset time
         chaos_state.redis_last_reset = datetime.now(UTC)
@@ -291,8 +290,8 @@ class TestRedisReset:
         assert data["redis"]["connection_count"] == 2
         assert data["redis"]["last_reset"] is not None
 
-        # Verify get_connection_status was called
-        mock_redis_client.get_connection_status.assert_called_once()
+        # Verify is_connected was called
+        mock_redis_client.is_connected.assert_called_once()
 
     @patch("app.main.redis_client", None)
     def test_status_no_redis_client(self, client):
