@@ -163,18 +163,14 @@ class TestRecordChaosMetrics:
         mock_settings_class.return_value = mock_settings
 
         mock_gauge = Mock()
-        mock_histogram = Mock()
         mock_meter.create_gauge.return_value = mock_gauge
-        mock_meter.create_histogram.return_value = mock_histogram
 
         # Act
-        record_chaos_metrics("cpu_load", False, 10.5)
+        record_chaos_metrics("cpu_load", False)
 
         # Assert
         mock_meter.create_gauge.assert_called()
-        mock_meter.create_histogram.assert_called()
         mock_gauge.set.assert_called_with(0, {"operation": "cpu_load"})
-        mock_histogram.record.assert_called_with(10.5, {"operation": "cpu_load"})
 
 
 class TestSetupTelemetry:

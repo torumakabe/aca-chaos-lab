@@ -146,9 +146,7 @@ def record_redis_metrics(connected: bool, latency_ms: int) -> None:
         logger.error(f"Failed to record Redis metrics: {e}")
 
 
-def record_chaos_metrics(
-    operation: str, active: bool, duration_seconds: float | None = None
-) -> None:
+def record_chaos_metrics(operation: str, active: bool) -> None:
     """Record chaos operation metrics.
 
     Note: Sampling is handled at the OpenTelemetry trace level, not here.
@@ -174,18 +172,7 @@ def record_chaos_metrics(
         )
         active_gauge.set(1 if active else 0, {"operation": operation})
 
-        # Duration histogram (only when operation completes)
-        if not active and duration_seconds is not None and duration_seconds >= 0:
-            duration_histogram = _meter.create_histogram(
-                name="chaos_operation_duration_seconds",
-                description="Chaos operation duration in seconds",
-                unit="s",
-            )
-            duration_histogram.record(duration_seconds, {"operation": operation})
-
-        logger.debug(
-            f"Recorded chaos metrics: operation={operation}, active={active}, duration={duration_seconds}s"
-        )
+        logger.debug(f"Recorded chaos metrics: operation={operation}, active={active}")
 
     except Exception as e:
         logger.error(f"Failed to record chaos metrics: {e}")

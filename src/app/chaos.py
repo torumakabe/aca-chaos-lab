@@ -79,8 +79,7 @@ async def generate_cpu_load(level: str, duration: int) -> None:
         logger.info("CPU load generation completed")
     finally:
         # Record end of chaos operation
-        actual_duration = time.time() - start_time
-        record_chaos_metrics("cpu_load", False, actual_duration)
+        record_chaos_metrics("cpu_load", False)
 
 
 async def generate_memory_load(level: str, duration: int) -> None:
@@ -101,8 +100,6 @@ async def generate_memory_load(level: str, duration: int) -> None:
     memory_blocks = []
     block_size = 10 * 1024 * 1024  # 10MB blocks
     num_blocks = memory_mb // 10
-
-    start_time = time.time()
     try:
         for _ in range(num_blocks):
             # Allocate and fill memory block
@@ -121,8 +118,7 @@ async def generate_memory_load(level: str, duration: int) -> None:
         logger.info("Memory load generation completed")
 
         # Record end of chaos operation
-        actual_duration = time.time() - start_time
-        record_chaos_metrics("memory_load", False, actual_duration)
+        record_chaos_metrics("memory_load", False)
 
 
 async def load_generator(level: str, duration: int) -> None:
@@ -133,6 +129,7 @@ async def load_generator(level: str, duration: int) -> None:
         chaos_state.load_end_time = datetime.now(UTC) + timedelta(seconds=duration)
 
         # Run CPU and memory load concurrently
+        # Note: Each function records its own metrics (cpu_load, memory_load)
         await asyncio.gather(
             generate_cpu_load(level, duration), generate_memory_load(level, duration)
         )
@@ -211,7 +208,6 @@ async def hang(request: HangRequest, req: Request) -> JSONResponse:
 
     # Record start of hang operation
     record_chaos_metrics("hang", True)
-    start_time = time.time()
 
     chaos_state.hang_active = True
     if request.duration_seconds > 0:
@@ -239,8 +235,7 @@ async def hang(request: HangRequest, req: Request) -> JSONResponse:
         return JSONResponse(content={"status": "hang_completed"})
     finally:
         # Record end of hang operation (if we ever get here)
-        duration = time.time() - start_time
-        record_chaos_metrics("hang", False, duration)
+        record_chaos_metrics("hang", False)
 
 
 @router.post("/redis-reset", response_model=RedisResetResponse)
@@ -270,8 +265,6 @@ async def reset_redis_connections(
         if request and hasattr(request, "force"):
             force = request.force
 
-        start_time = time.time()
-
         # Reset connections
         connections_closed = await redis_client.reset_connections()
 
@@ -279,8 +272,7 @@ async def reset_redis_connections(
         chaos_state.redis_last_reset = datetime.now(UTC)
 
         # Record end of redis reset operation
-        duration = time.time() - start_time
-        record_chaos_metrics("redis_reset", False, duration)
+        record_chaos_metrics("redis_reset", False)
 
         logger.info(
             f"Redis connections reset: {connections_closed} connections closed (force={force})"
@@ -294,8 +286,7 @@ async def reset_redis_connections(
 
     except Exception as e:
         # Record failed redis reset operation
-        duration = time.time() - start_time if "start_time" in locals() else 0
-        record_chaos_metrics("redis_reset", False, duration)
+        record_chaos_metrics("redis_reset", False)
 
         logger.error(f"Redis reset failed: {e}")
         error_response = ErrorResponse(
