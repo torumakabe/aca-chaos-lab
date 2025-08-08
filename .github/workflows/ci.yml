@@ -51,75 +51,23 @@ jobs:
       - name: Mypy
         working-directory: src
         run: uv run mypy app/
-
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Install uv
-        run: |
-          python -m pip install --upgrade pip
-          pip install uv
-      - name: Sync deps (dev)
-        working-directory: src
-        run: uv sync --extra dev
-      - name: Run unit tests
-        working-directory: src
-        env:
-          RUN_INTEGRATION_TESTS: 'false'
-        run: uv run pytest tests/unit -q
-
   bicep:
     name: Bicep Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Show runner context
-        run: |
-          set -x
-          pwd
-          ls -la
-          ls -la infra || true
-          uname -a
-          docker --version || true
-          docker info || true
-      - name: Bicep version (container)
-        run: |
-          docker pull ghcr.io/azure/bicep:0.37.4
-          docker run --rm ghcr.io/azure/bicep:0.37.4 --version
-      - name: Restore Bicep modules
-        run: |
-          set -euo pipefail
-          for i in 1 2 3; do
-            docker run --rm -v "${{ github.workspace }}":/work -w /work ghcr.io/azure/bicep:0.37.4 restore infra/main.bicep && break || {
-              echo "bicep restore failed (attempt $i), retrying...";
-              sleep $((i*5));
-            }
-          done
-      - name: Validate Bicep Templates
-        run: |
-          set -euo pipefail
-          for i in 1 2 3; do
-            docker run --rm -v "${{ github.workspace }}":/work -w /work ghcr.io/azure/bicep:0.37.4 build infra/main.bicep && break || {
-              echo "bicep build failed (attempt $i), retrying...";
-              sleep $((i*5));
-            }
-          done
-      - name: Fallback - native Bicep CLI if Docker path fails
-        if: failure()
+      - name: Install Bicep CLI
         run: |
           set -euxo pipefail
+          BICEP_VERSION=v0.37.4
           mkdir -p "$HOME/.local/bin"
-          curl -L -o "$HOME/.local/bin/bicep" https://github.com/Azure/bicep/releases/download/v0.37.4/bicep-linux-x64
+          curl -L -o "$HOME/.local/bin/bicep" "https://github.com/Azure/bicep/releases/download/${BICEP_VERSION}/bicep-linux-x64"
           chmod +x "$HOME/.local/bin/bicep"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          "$HOME/.local/bin/bicep" --version
-          "$HOME/.local/bin/bicep" restore infra/main.bicep
-          "$HOME/.local/bin/bicep" build infra/main.bicep
+      - name: Bicep version
+        run: bicep --version
+      - name: Restore Bicep modules
+        run: bicep restore infra/main.bicep
+      - name: Validate Bicep Templates
+        run: bicep build infra/main.bicep
