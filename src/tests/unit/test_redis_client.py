@@ -51,11 +51,8 @@ async def test_connect_success(redis_client_instance, mock_azure_credential):
 
     with patch("redis.asyncio.from_url") as mock_from_url:
         mock_redis = AsyncMock()
-
-        async def async_from_url(*args, **kwargs):
-            return mock_redis
-
-        mock_from_url.side_effect = async_from_url
+        # from_url は同期関数としてクライアントを返す
+        mock_from_url.return_value = mock_redis
 
         with patch.dict("os.environ", {"AZURE_CLIENT_ID": "test-client-id"}):
             await redis_client_instance.connect()
@@ -81,11 +78,8 @@ async def test_connect_failure(redis_client_instance, mock_azure_credential):
     with patch("redis.asyncio.from_url") as mock_from_url:
         mock_redis = AsyncMock()
         mock_redis.ping.side_effect = redis.ConnectionError("Connection failed")
-
-        async def async_from_url(*args, **kwargs):
-            return mock_redis
-
-        mock_from_url.side_effect = async_from_url
+        # from_url は同期関数としてクライアントを返す
+        mock_from_url.return_value = mock_redis
 
         with patch.dict("os.environ", {"AZURE_CLIENT_ID": "test-client-id"}):
             with pytest.raises(Exception) as exc_info:
