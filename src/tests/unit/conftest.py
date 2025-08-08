@@ -16,13 +16,10 @@ def mock_azure_credential():
     mock_token.token = "mock_token"
     mock_token.expires_on = int(datetime.now(UTC).timestamp()) + 3600
 
-    # Make get_token return an awaitable
-    async def async_get_token(*args, **kwargs):
-        return mock_token
+    # get_token は非同期関数として await 可能
+    credential.get_token = AsyncMock(return_value=mock_token)
 
-    credential.get_token = AsyncMock(side_effect=async_get_token)
-
-    # Make close return an awaitable
+    # close も非同期
     credential.close = AsyncMock()
 
     return credential

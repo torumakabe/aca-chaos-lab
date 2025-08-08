@@ -30,17 +30,81 @@ class RedisClient:
         self._connection_count = 0
         self._connection_lock = asyncio.Lock()
 
+    def _is_auth_error(self, exc: Exception) -> bool:
+        """Detect if the exception indicates an authentication problem."""
+        if isinstance(exc, redis.AuthenticationError):
+            return True
+        # Some servers return ResponseError with NOAUTH/WRONGPASS messages
+        if isinstance(exc, redis.ResponseError):
+            msg = str(exc).upper()
+            return "NOAUTH" in msg or "WRONGPASS" in msg or "AUTH" in msg
+        return False
+
+    async def _reconnect_with_new_token(self) -> None:
+        """Reconnect Redis client with a fresh Entra ID token."""
+        # Get Entra ID token
+        token = await self._get_entra_token()
+
+        # Recreate client (same options as connect())
+        import os
+
+        client_id = os.getenv("AZURE_CLIENT_ID", "")
+
+        max_connections = (
+            getattr(self.settings, "redis_max_connections", 50)
+            if self.settings
+            else 50
+        )
+        socket_timeout = (
+            getattr(self.settings, "redis_socket_timeout", 3) if self.settings else 3
+        )
+        socket_connect_timeout = (
+            getattr(self.settings, "redis_socket_connect_timeout", 3)
+            if self.settings
+            else 3
+        )
+
+        max_retries = getattr(self.settings, "redis_max_retries", 1) if self.settings else 1
+        backoff_base = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+        backoff_cap = getattr(self.settings, "redis_backoff_cap", 3) if self.settings else 3
+
+        retry_strategy = Retry(
+            backoff=ExponentialBackoff(base=backoff_base, cap=backoff_cap),
+            retries=max_retries,
+        )
+
+        self.client = redis.from_url(
+            f"rediss://{self.host}:{self.port}",
+            username=client_id,
+            password=token,
+            decode_responses=True,
+            socket_connect_timeout=socket_connect_timeout,
+            socket_timeout=socket_timeout,
+            retry=retry_strategy,
+            retry_on_error=[redis.ConnectionError, redis.TimeoutError],
+            health_check_interval=30,
+            max_connections=max_connections,
+        )
+
+        # Validate connection
+        await self.client.ping()
+        self._connection_count += 1
+
     async def _get_entra_token(self) -> str:
-        """Get Entra ID token for Redis authentication."""
+        """Get Entra ID token for Redis authentication.
+
+        Uses epoch time (time.time) and a safety margin to determine cache validity.
+        """
         async with self._token_lock:
-            # Check if we have a valid cached token
-            if (
-                self._token_cache.get("token")
-                and self._token_cache.get("expires_on", 0)
-                > asyncio.get_event_loop().time()
-            ):
-                logger.debug("Using cached token")
-                return str(self._token_cache["token"])
+            # Check if we have a valid cached token (with safety margin)
+            cached_token = self._token_cache.get("token")
+            expires_on = self._token_cache.get("expires_on", 0)
+            now = time.time()
+            safety_seconds = 120  # refresh 2 minutes before expiry to be safe
+
+            if cached_token and float(expires_on) - safety_seconds > now:
+                logger.debug("Using cached Entra ID token for Redis authentication")
+                return str(cached_token)
 
             # Get new token
             logger.info("Getting new Entra ID token for Redis authentication")
@@ -48,7 +112,7 @@ class RedisClient:
                 self.credential = DefaultAzureCredential()
 
             token = await self.credential.get_token("https://redis.azure.com/.default")
-            logger.info(f"Successfully obtained token, expires at: {token.expires_on}")
+            logger.info(f"Successfully obtained token, expires at (epoch): {token.expires_on}")
 
             # Cache the token
             self._token_cache = {
@@ -110,7 +174,8 @@ class RedisClient:
 
             # Create Redis client with connection pool
             # redis-py will manage the connection pool internally
-            self.client = await redis.from_url(
+            # NOTE: redis.asyncio.from_url is a synchronous factory that returns a client
+            self.client = redis.from_url(
                 f"rediss://{self.host}:{self.port}",
                 username=client_id,
                 password=token,
@@ -158,25 +223,50 @@ class RedisClient:
         """Get value from Redis."""
         if not self.client:
             raise Exception("Redis client not initialized")
-
-        value = await self.client.get(key)
-        return value if value else None
+        try:
+            value = await self.client.get(key)
+            return value if value else None
+        except Exception as e:
+            if self._is_auth_error(e):
+                # Single retry after re-authentication
+                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                await asyncio.sleep(backoff)
+                await self._reconnect_with_new_token()
+                value = await self.client.get(key)
+                return value if value else None
+            raise
 
     async def set(self, key: str, value: str, ex: int | None = None) -> bool:
         """Set value in Redis."""
         if not self.client:
             raise Exception("Redis client not initialized")
-
-        result = await self.client.set(key, value, ex=ex)
-        return bool(result)
+        try:
+            result = await self.client.set(key, value, ex=ex)
+            return bool(result)
+        except Exception as e:
+            if self._is_auth_error(e):
+                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                await asyncio.sleep(backoff)
+                await self._reconnect_with_new_token()
+                result = await self.client.set(key, value, ex=ex)
+                return bool(result)
+            raise
 
     async def increment(self, key: str) -> int:
         """Increment counter in Redis."""
         if not self.client:
             raise Exception("Redis client not initialized")
-
-        result = await self.client.incr(key)
-        return int(result)
+        try:
+            result = await self.client.incr(key)
+            return int(result)
+        except Exception as e:
+            if self._is_auth_error(e):
+                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                await asyncio.sleep(backoff)
+                await self._reconnect_with_new_token()
+                result = await self.client.incr(key)
+                return int(result)
+            raise
 
     async def ping(self) -> bool:
         """Ping Redis to check connection."""
@@ -193,9 +283,19 @@ class RedisClient:
             record_redis_metrics(True, latency_ms)
             return bool(result)
         except Exception as e:
+            # Attempt re-auth once if the error is authentication-related
+            if self._is_auth_error(e):
+                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                await asyncio.sleep(backoff)
+                await self._reconnect_with_new_token()
+                result = await self.client.ping()
+                end_time = time.time()
+                latency_ms = int((end_time - start_time) * 1000)
+                record_redis_metrics(True, latency_ms)
+                return bool(result)
             # Record metrics for failed ping
             record_redis_metrics(False, -1)
-            raise e
+            raise
 
     async def reset_connections(self) -> int:
         """Reset all Redis connections."""

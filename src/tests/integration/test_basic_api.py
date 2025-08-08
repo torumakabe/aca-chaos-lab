@@ -18,6 +18,13 @@ BASE_URL = os.getenv("TEST_BASE_URL") or azd_env.get(
     "CONTAINER_APP_URI", "http://localhost:8000"
 )
 
+# Skip integration tests by default unless explicitly enabled
+RUN_INTEGRATION = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
+pytestmark = pytest.mark.skipif(
+    not RUN_INTEGRATION,
+    reason="Integration tests disabled. Set RUN_INTEGRATION_TESTS=true to enable.",
+)
+
 
 class APIClient:
     """Simple HTTP client for API testing."""
@@ -58,6 +65,7 @@ async def api_client():
 
 
 @pytest.mark.asyncio
+@pytest.mark.e2e
 class TestBasicAPI:
     """Test basic API functionality."""
 

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from typing import Any
 
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     global redis_client
 
@@ -76,12 +76,20 @@ async def lifespan(_: FastAPI):
     else:
         logger.info("Redis is disabled via REDIS_ENABLED setting")
 
+    # Expose runtime dependencies via app.state (for DI-friendly access)
+    with suppress(Exception):
+        app.state.settings = settings
+        app.state.redis_client = redis_client
+
     yield
 
     # Shutdown
     logger.info("Shutting down Azure Container Apps Chaos Lab")
     if redis_client:
         await redis_client.close()
+    # Clear state references
+    with suppress(Exception):
+        app.state.redis_client = None
 
 
 app = FastAPI(
@@ -124,21 +132,26 @@ async def root(request: Request):
     redis_data: str | None = "Redis unavailable"
     redis_error = None
 
-    if redis_client and settings.redis_enabled:
+    # Prefer app.state, fallback to module-level singletons
+    cfg = getattr(getattr(request, "app", object()), "state", object())
+    runtime_settings = getattr(cfg, "settings", settings)
+    client = getattr(cfg, "redis_client", None) or redis_client
+
+    if client and runtime_settings.redis_enabled:
         try:
             # Try to get data from Redis (redis-py will handle retries internally)
             key = "chaos_lab:data:sample"
-            redis_data = await redis_client.get(key)
+            redis_data = await client.get(key)
 
             if not redis_data:
                 # Set initial data if not exists
                 redis_data = f"Data created at {timestamp}"
-                await redis_client.set(key, redis_data)
+                await client.set(key, redis_data)
 
             # Redis optimization: Only increment counter for ~10% of requests to reduce load
             # This represents a 90% reduction in Redis operations for request counting
             if hash(timestamp[:19]) % 10 == 0:  # ~10% of requests
-                await redis_client.increment("chaos_lab:counter:requests")
+                await client.increment("chaos_lab:counter:requests")
 
         except Exception as e:
             # Log error
@@ -146,7 +159,7 @@ async def root(request: Request):
             redis_error = str(e)
 
     # If Redis is enabled but we have an error, return 503
-    if settings.redis_enabled and redis_error:
+    if runtime_settings.redis_enabled and redis_error:
         error_response = ErrorResponse(
             error="Service Unavailable",
             detail=f"Redis operation failed: {redis_error}",
@@ -165,7 +178,7 @@ async def root(request: Request):
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health(_: Request):
+async def health(request: Request):
     """Health check endpoint with caching to reduce Redis load."""
     # Check if we can use cached health status
     if _is_health_cache_valid() and _health_cache["status"]:
@@ -174,10 +187,15 @@ async def health(_: Request):
     redis_connected = False
     redis_latency_ms = 0
 
-    if redis_client and settings.redis_enabled:
+    # Prefer app.state, fallback to module-level singletons
+    cfg = getattr(getattr(request, "app", object()), "state", object())
+    runtime_settings = getattr(cfg, "settings", settings)
+    client = getattr(cfg, "redis_client", None) or redis_client
+
+    if client and runtime_settings.redis_enabled:
         try:
             start_time = asyncio.get_event_loop().time()
-            await redis_client.ping()
+            await client.ping()
             end_time = asyncio.get_event_loop().time()
 
             redis_connected = True
@@ -186,7 +204,9 @@ async def health(_: Request):
             redis_connected = False
 
     # Determine overall health status
-    status = "healthy" if not settings.redis_enabled or redis_connected else "unhealthy"
+    status = (
+        "healthy" if not runtime_settings.redis_enabled or redis_connected else "unhealthy"
+    )
 
     # Build response
     health_response = HealthResponse(
