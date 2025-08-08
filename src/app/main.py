@@ -205,7 +205,9 @@ async def health(request: Request):
 
     # Determine overall health status
     status = (
-        "healthy" if not runtime_settings.redis_enabled or redis_connected else "unhealthy"
+        "healthy"
+        if not runtime_settings.redis_enabled or redis_connected
+        else "unhealthy"
     )
 
     # Build response

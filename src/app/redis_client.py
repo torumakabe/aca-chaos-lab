@@ -51,9 +51,7 @@ class RedisClient:
         client_id = os.getenv("AZURE_CLIENT_ID", "")
 
         max_connections = (
-            getattr(self.settings, "redis_max_connections", 50)
-            if self.settings
-            else 50
+            getattr(self.settings, "redis_max_connections", 50) if self.settings else 50
         )
         socket_timeout = (
             getattr(self.settings, "redis_socket_timeout", 3) if self.settings else 3
@@ -64,9 +62,15 @@ class RedisClient:
             else 3
         )
 
-        max_retries = getattr(self.settings, "redis_max_retries", 1) if self.settings else 1
-        backoff_base = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
-        backoff_cap = getattr(self.settings, "redis_backoff_cap", 3) if self.settings else 3
+        max_retries = (
+            getattr(self.settings, "redis_max_retries", 1) if self.settings else 1
+        )
+        backoff_base = (
+            getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+        )
+        backoff_cap = (
+            getattr(self.settings, "redis_backoff_cap", 3) if self.settings else 3
+        )
 
         retry_strategy = Retry(
             backoff=ExponentialBackoff(base=backoff_base, cap=backoff_cap),
@@ -112,7 +116,9 @@ class RedisClient:
                 self.credential = DefaultAzureCredential()
 
             token = await self.credential.get_token("https://redis.azure.com/.default")
-            logger.info(f"Successfully obtained token, expires at (epoch): {token.expires_on}")
+            logger.info(
+                f"Successfully obtained token, expires at (epoch): {token.expires_on}"
+            )
 
             # Cache the token
             self._token_cache = {
@@ -229,7 +235,11 @@ class RedisClient:
         except Exception as e:
             if self._is_auth_error(e):
                 # Single retry after re-authentication
-                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                backoff = (
+                    getattr(self.settings, "redis_backoff_base", 1)
+                    if self.settings
+                    else 1
+                )
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
                 value = await self.client.get(key)
@@ -245,7 +255,11 @@ class RedisClient:
             return bool(result)
         except Exception as e:
             if self._is_auth_error(e):
-                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                backoff = (
+                    getattr(self.settings, "redis_backoff_base", 1)
+                    if self.settings
+                    else 1
+                )
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
                 result = await self.client.set(key, value, ex=ex)
@@ -261,7 +275,11 @@ class RedisClient:
             return int(result)
         except Exception as e:
             if self._is_auth_error(e):
-                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                backoff = (
+                    getattr(self.settings, "redis_backoff_base", 1)
+                    if self.settings
+                    else 1
+                )
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
                 result = await self.client.incr(key)
@@ -285,7 +303,11 @@ class RedisClient:
         except Exception as e:
             # Attempt re-auth once if the error is authentication-related
             if self._is_auth_error(e):
-                backoff = getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+                backoff = (
+                    getattr(self.settings, "redis_backoff_base", 1)
+                    if self.settings
+                    else 1
+                )
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
                 result = await self.client.ping()

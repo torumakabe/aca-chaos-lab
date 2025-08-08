@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Ruff Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+      - name: Sync deps (dev)
+        working-directory: src
+        run: uv sync --extra dev
+      - name: Ruff check
+        working-directory: src
+        run: uv run ruff check app/
+
+  typecheck:
+    name: Mypy Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+      - name: Sync deps (dev)
+        working-directory: src
+        run: uv sync --extra dev
+      - name: Mypy
+        working-directory: src
+        run: uv run mypy app/
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install uv
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+      - name: Sync deps (dev)
+        working-directory: src
+        run: uv sync --extra dev
+      - name: Run unit tests
+        working-directory: src
+        env:
+          RUN_INTEGRATION_TESTS: 'false'
+        run: uv run pytest tests/unit -q
+
+  bicep:
+    name: Bicep Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Azure CLI
+        uses: azure/setup-azcli@v1
+      - name: Install Bicep CLI
+        run: az bicep install
+      - name: Validate Bicep Templates
+        run: az bicep build --file infra/main.bicep
