@@ -83,7 +83,15 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Azure CLI
         uses: azure/setup-azcli@v1
-      - name: Install Bicep CLI
-        run: az bicep install
+      - name: Show az/bicep versions
+        run: |
+          az version
+          az bicep version || true
+      - name: Install Bicep CLI (fixed)
+        run: |
+          az bicep install
+          # Ensure the latest matching version is used (helps when runner has older az)
+          az bicep upgrade --force || true
+          az bicep version
       - name: Validate Bicep Templates
         run: az bicep build --file infra/main.bicep
