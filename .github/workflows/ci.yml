@@ -81,9 +81,45 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Show runner context
+        run: |
+          set -x
+          pwd
+          ls -la
+          ls -la infra || true
+          uname -a
+          docker --version || true
+          docker info || true
       - name: Bicep version (container)
-        run: docker run --rm ghcr.io/azure/bicep:0.37.4 --version
+        run: |
+          docker pull ghcr.io/azure/bicep:0.37.4
+          docker run --rm ghcr.io/azure/bicep:0.37.4 --version
       - name: Restore Bicep modules
-        run: docker run --rm -v "$PWD":/work -w /work ghcr.io/azure/bicep:0.37.4 restore infra/main.bicep
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            docker run --rm -v "${{ github.workspace }}":/work -w /work ghcr.io/azure/bicep:0.37.4 restore infra/main.bicep && break || {
+              echo "bicep restore failed (attempt $i), retrying...";
+              sleep $((i*5));
+            }
+          done
       - name: Validate Bicep Templates
-        run: docker run --rm -v "$PWD":/work -w /work ghcr.io/azure/bicep:0.37.4 build infra/main.bicep
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            docker run --rm -v "${{ github.workspace }}":/work -w /work ghcr.io/azure/bicep:0.37.4 build infra/main.bicep && break || {
+              echo "bicep build failed (attempt $i), retrying...";
+              sleep $((i*5));
+            }
+          done
+      - name: Fallback - native Bicep CLI if Docker path fails
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -L -o "$HOME/.local/bin/bicep" https://github.com/Azure/bicep/releases/download/v0.37.4/bicep-linux-x64
+          chmod +x "$HOME/.local/bin/bicep"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          "$HOME/.local/bin/bicep" --version
+          "$HOME/.local/bin/bicep" restore infra/main.bicep
+          "$HOME/.local/bin/bicep" build infra/main.bicep
