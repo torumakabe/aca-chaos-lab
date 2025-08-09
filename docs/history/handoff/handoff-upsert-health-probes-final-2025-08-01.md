@@ -10,7 +10,7 @@
 ### 主要成果
 
 1. **Azure Verified Module upsert戦略の実装**: `br/public:avm/ptn/azd/container-app-upsert:0.1.2`を使用した堅牢なデプロイメント戦略
-2. **ヘルスプローブ自動設定**: postprovisionフックによる自動化（Liveness: 30s遅延/10s間隔、Readiness: 5s遅延/5s間隔）
+2. **ヘルスプローブ自動設定**: postprovisionフックによる自動化（Liveness: TCP 60s遅延/10s間隔、Readiness: HTTP /health 10s遅延/5s間隔）
 3. **完全自動化**: `azd up`ワンコマンドでインフラ構築からプローブ設定まで完了
 4. **冪等性保証**: 複数回実行でも安全、既存設定の適切な保持
 

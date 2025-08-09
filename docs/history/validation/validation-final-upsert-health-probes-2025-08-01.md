@@ -29,8 +29,8 @@
 ## ヘルスプローブ自動設定検証
 
 ### プローブ設定の自動追加 ✅
-- **Liveness Probe**: 30秒遅延、10秒間隔、`/health`エンドポイント
-- **Readiness Probe**: 5秒遅延、5秒間隔、`/health`エンドポイント
+- **Liveness Probe**: TCPポート8000（60秒遅延、10秒間隔、タイムアウト10秒、失敗しきい値5）
+- **Readiness Probe**: HTTP `GET /health`（10秒遅延、5秒間隔、タイムアウト3秒、失敗しきい値2、成功しきい値2）
 - **検証結果**: ✅ 両プローブが正しく設定される
 
 ### 冪等性動作 ✅
@@ -42,7 +42,7 @@
 ### postprovision hook統合 ✅
 - **実行タイミング**: Infrastructure provision後、アプリケーションデプロイ後
 - **実行結果**: ✅ 確実に実行され、ログが可視化
-- **証拠**: azd up実行時に "[INFO] ✅ Health probes added successfully!" 確認済み
+- **証拠**: azd up実行時に "[INFO] ✅ Health probes configured successfully!" を確認
 
 ## 技術品質検証
 
