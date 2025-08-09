@@ -53,22 +53,10 @@ CURRENT_PROBES=$(az containerapp show \
     --query 'properties.template.containers[0].probes' \
     --output json 2>/dev/null || echo "null")
 
-# Check if we have both Liveness and Readiness probes
-LIVENESS_EXISTS=$(echo "$CURRENT_PROBES" | jq -r '.[] | select(.type == "Liveness") | .type' 2>/dev/null || echo "")
-READINESS_EXISTS=$(echo "$CURRENT_PROBES" | jq -r '.[] | select(.type == "Readiness") | .type' 2>/dev/null || echo "")
-
-if [ "$LIVENESS_EXISTS" = "Liveness" ] && [ "$READINESS_EXISTS" = "Readiness" ]; then
-    log_info "✅ Health probes already properly configured for Container App '$CONTAINER_APP_NAME'"
-    log_info "Found: Liveness and Readiness probes"
-    log_info "Skipping health probe configuration (already complete)"
-    exit 0
-fi
-
+# Always (re)configure to desired probes to ensure settings match this project
 if [ "$CURRENT_PROBES" != "null" ] && [ "$CURRENT_PROBES" != "[]" ]; then
-    log_warn "Partial health probe configuration detected"
-    log_info "Current probes:"
-    echo "$CURRENT_PROBES" | jq '.[].type' 2>/dev/null || echo "Unable to parse probe types"
-    log_info "Will reconfigure to ensure both Liveness and Readiness probes are present"
+    log_info "Existing probe configuration detected. Will (re)apply desired probes."
+    echo "$CURRENT_PROBES" | jq '.' >/dev/null 2>&1 || true
 fi
 
 # Add health probes to Container App using JSON configuration
@@ -90,15 +78,13 @@ fi
 UPDATED_CONFIG=$(echo "$CONTAINER_CONFIG" | jq '.probes = [
     {
         "type": "Liveness",
-        "httpGet": {
-            "path": "/health",
-            "port": 8000,
-            "scheme": "HTTP"
+        "tcpSocket": {
+            "port": 8000
         },
-        "initialDelaySeconds": 30,
+        "initialDelaySeconds": 60,
         "periodSeconds": 10,
-        "timeoutSeconds": 5,
-        "failureThreshold": 3,
+        "timeoutSeconds": 10,
+        "failureThreshold": 5,
         "successThreshold": 1
     },
     {
@@ -108,11 +94,11 @@ UPDATED_CONFIG=$(echo "$CONTAINER_CONFIG" | jq '.probes = [
             "port": 8000,
             "scheme": "HTTP"
         },
-        "initialDelaySeconds": 5,
+        "initialDelaySeconds": 10,
         "periodSeconds": 5,
         "timeoutSeconds": 3,
-        "failureThreshold": 3,
-        "successThreshold": 1
+        "failureThreshold": 2,
+        "successThreshold": 2
     }
 ]')
 
@@ -130,9 +116,10 @@ echo "$UPDATED_CONFIG" | jq '{
     --output table
 
 if [ $? -eq 0 ]; then
-    log_info "✅ Health probes added successfully!"
-    log_info "Container App '$CONTAINER_APP_NAME' now has Liveness and Readiness probes configured."
-    log_info "Probes are monitoring the /health endpoint on port 8000"
+    log_info "✅ Health probes configured successfully!"
+    log_info "Container App '$CONTAINER_APP_NAME' now uses:"
+    log_info "- Liveness (TCP): port 8000"
+    log_info "- Readiness (HTTP): GET /health on port 8000"
 else
     log_error "Failed to add health probes to Container App"
     exit 1

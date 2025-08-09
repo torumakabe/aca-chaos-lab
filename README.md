@@ -123,8 +123,8 @@ graph TB
 - **条件付きロジック**: `!empty(containerAppImageName) ? containerAppImageName : ''`
 - **azd統合**: Azure Developer CLIとの完全な互換性
 - **ヘルスプローブ自動設定**: postprovisionフックにより、AVMでサポートされていないヘルスプローブを自動的に追加
-  - Liveness Probe: 30秒遅延、10秒間隔で`/health`エンドポイントを監視
-  - Readiness Probe: 5秒遅延、5秒間隔で`/health`エンドポイントを監視
+  - Liveness Probe: TCPポート8000を監視（60秒遅延、10秒間隔、タイムアウト10秒、失敗しきい値5）
+  - Readiness Probe: HTTP `GET /health` を監視（10秒遅延、5秒間隔、タイムアウト3秒、失敗しきい値2、成功しきい値2）
   - 冪等性により、既存のプローブ設定を適切に検出・保持
 
 この戦略により、開発・テスト・本番環境での安定したデプロイメントと運用効率の向上を実現しています。
@@ -210,7 +210,7 @@ graph TB
    - Container Registryへのプッシュ
    - Container Appへのデプロイ
    - マネージドIDの設定（Redisアクセスポリシー、ACR Pull権限）
-   - **ヘルスプローブの自動設定**: postprovisionフックにより、Liveness（30秒遅延、10秒間隔）とReadiness（5秒遅延、5秒間隔）プローブが`/health`エンドポイントに自動的に設定されます
+  - **ヘルスプローブの自動設定**: postprovisionフックにより、Liveness（TCP: 60秒遅延/10秒間隔/タイムアウト10秒/失敗5）とReadiness（HTTP /health: 10秒遅延/5秒間隔/タイムアウト3秒/失敗2/成功2）を自動設定します
 
 3. 動作確認：
    ```bash
