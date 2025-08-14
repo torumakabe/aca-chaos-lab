@@ -16,20 +16,20 @@ resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2024-10-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    minimumTlsVersion: '1.2'    
+    minimumTlsVersion: '1.2'
   }
 }
 
 resource redisEnterpriseDatabase 'Microsoft.Cache/redisEnterprise/databases@2024-10-01' = {
   name: 'default'
   parent: redisEnterprise
-  properties:{
+  properties: {
     clientProtocol: 'Encrypted'
     port: 10000
     clusteringPolicy: 'OSSCluster'
     evictionPolicy: 'NoEviction'
-    persistence:{
-      aofEnabled: false 
+    persistence: {
+      aofEnabled: false
       rdbEnabled: false
     }
   }
@@ -37,7 +37,7 @@ resource redisEnterpriseDatabase 'Microsoft.Cache/redisEnterprise/databases@2024
 
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
   name: 'privatelink.redis.azure.net'
-  location: 'global'  
+  location: 'global'
   tags: tags
 }
 
@@ -91,6 +91,7 @@ resource privateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneG
 }
 
 // Container AppのManaged Identityにデータベースアクセスポリシーを割り当て
+#disable-next-line BCP081
 resource accessPolicyAssignmentForApp 'Microsoft.Cache/redisEnterprise/databases/accessPolicyAssignments@2024-10-01' = if (!empty(containerAppPrincipalId)) {
   parent: redisEnterpriseDatabase
   name: 'container-app-assignment'

@@ -9,6 +9,7 @@
 - 2025-08-01: Container App upsert戦略設計追加
 - 2025-08-03: テレメトリとロギング一貫性向上設計追加
 - 2025-08-08: リファクタリング反映（Redisトークンキャッシュの安全マージン、自動再認証・再接続、FastAPIのapp.stateによるDI、CIのBicepビルド簡素化）
+- 2025-08-14: AVM container-app-upsert v0.2.0対応設計追加（containerProbesパラメータ統合、add-health-probes.sh廃止）
 
 ## アーキテクチャ概要
 
@@ -1393,3 +1394,162 @@ class Settings:
 - Azure Monitor エクスポーターのスタブ
 - Redis接続のモック
 - 例外シナリオのシミュレーション
+
+## AVM container-app-upsert v0.2.0対応設計
+
+### 移行概要
+
+現在のContainer Appデプロイメントを以下のように変更し、ヘルスプローブの設定を宣言的かつ統合的にする：
+
+#### 現在のアーキテクチャ (v0.1.2)
+```mermaid
+graph LR
+    A[Bicep Template] --> B[AVM v0.1.2]
+    B --> C[Container App作成]
+    C --> D[postprovision hook]
+    D --> E[add-health-probes.sh]
+    E --> F[Azure CLI]
+    F --> G[ヘルスプローブ追加]
+```
+
+#### 新しいアーキテクチャ (v0.2.0)
+```mermaid
+graph LR
+    A[Bicep Template] --> B[AVM v0.2.0]
+    B --> C[containerProbes parameter]
+    C --> D[Container App作成]
+    D --> E[ヘルスプローブ統合設定]
+```
+
+### containerProbesパラメータ設計
+
+既存のADR設定に基づく完全な互換設定：
+
+```bicep
+containerProbes: [
+  {
+    type: 'Liveness'
+    tcpSocket: {
+      port: 8000
+    }
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 5
+    successThreshold: 1
+  }
+  {
+    type: 'Readiness'
+    httpGet: {
+      path: '/health'
+      port: 8000
+      scheme: 'HTTP'
+    }
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+    successThreshold: 2
+  }
+]
+```
+
+### 変更影響分析
+
+#### 削除される構成要素
+1. **postprovision hook**: `azure.yaml`の`hooks.postprovision`セクション
+2. **add-health-probes.shスクリプト**: 完全に不要となる
+3. **外部設定依存**: Azure CLIによる後付け設定プロセス
+
+#### 追加される構成要素
+1. **containerProbesパラメータ**: main.bicep内での宣言的設定
+2. **型安全性**: Bicepテンプレートによる設定検証
+3. **一貫性保証**: デプロイ時のプローブ設定保証
+
+### 移行手順設計
+
+#### フェーズ1: 準備作業
+1. 現在のプローブ設定の文書化確認
+2. AVM v0.2.0のcontainerProbesスキーマ検証
+3. 既存設定との完全互換性確認
+
+#### フェーズ2: Bicepテンプレート更新
+1. `main.bicep`のモジュールバージョン更新: `0.1.2` → `0.2.0`
+2. `containerProbes`パラメータの追加と設定
+3. Bicepビルドテストによる検証
+
+#### フェーズ3: 設定クリーンアップ
+1. `azure.yaml`からpostprovisionフックの削除
+2. `scripts/add-health-probes.sh`の削除
+3. 関連ドキュメントの更新
+
+#### フェーズ4: 検証と展開
+1. ヘルスプローブ設定の動作確認
+2. デプロイプロセスの簡素化確認
+3. 既存機能の非破壊性確認
+
+### リスク分析とミティゲーション
+
+#### 識別されたリスク
+1. **設定不整合**: containerProbes設定が既存設定と異なる場合のプローブ動作変更
+   - **ミティゲーション**: ADR記録に基づく厳密な設定復元
+2. **デプロイプロセス変更**: postprovisionフック削除による自動化プロセス影響
+   - **ミティゲーション**: 段階的移行とロールバック計画準備
+3. **AVM依存性**: 新バージョンモジュールの未知の動作変更
+   - **ミティゲーション**: 開発環境での完全テスト実行
+
+#### 成功基準
+1. **機能的等価性**: 移行後のヘルスプローブ動作が移行前と同一
+2. **プロセス簡素化**: postprovisionフック不要でのワンステップデプロイ
+3. **保守性向上**: 宣言的設定による設定ドリフト排除
+
+### 実装アプローチ
+
+#### 優先度付き実装戦略
+1. **高優先度**: 核心機能の移行（モジュールバージョン、containerProbes）
+2. **中優先度**: 設定クリーンアップ（postprovision削除、スクリプト削除）  
+3. **低優先度**: ドキュメント更新（READMEなど）
+
+#### 品質ゲート
+- [x] Bicepテンプレート構文検証
+- [x] AVM v0.2.0 containerProbes互換性確認
+- [x] 既存ADR設定との完全整合性確認
+- [ ] azd up実行による動作検証
+- [ ] ヘルスプローブ実効性テスト
+- [ ] ロールバック手順確認
+
+### エラー処理戦略
+
+#### 移行時の潜在的エラーと対処法
+
+| エラーケース | 症状 | 対処法 | 緊急度 |
+|-------------|------|-------|-------|
+| AVM v0.2.0 互換性エラー | Bicepビルド失敗 | バージョン0.1.2への復旧 | 高 |
+| containerProbes構文エラー | デプロイ失敗 | 構文修正またはパラメータ削除 | 高 |
+| プローブ設定値エラー | Container App作成失敗 | ADR設定値の再確認 | 中 |
+| postprovisionフック削除影響 | デプロイプロセス変更 | 手動プローブ確認 | 低 |
+
+#### デプロイフロー変更の検証項目
+
+```mermaid
+graph TD
+    A[Bicep Template] --> B{AVM v0.2.0 Load}
+    B -->|Success| C[containerProbes Validation]
+    B -->|Failure| X[Rollback to v0.1.2]
+    C -->|Valid| D[Container App Deploy]
+    C -->|Invalid| Y[Fix Parameters]
+    D -->|Success| E[Health Probe Active]
+    D -->|Failure| Z[Manual Recovery]
+    E --> F[Validation Complete]
+```
+
+#### ロールバック自動化
+
+```bash
+# 緊急時ロールバックスクリプト (予備)
+#!/bin/bash
+echo "Reverting to AVM v0.1.2..."
+git checkout HEAD~1 -- infra/main.bicep azure.yaml
+git checkout HEAD~1 -- scripts/add-health-probes.sh
+azd deploy --no-prompt
+```

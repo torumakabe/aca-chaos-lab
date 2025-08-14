@@ -99,7 +99,7 @@ module containerAppsEnvironment './modules/container-apps-environment.bicep' = {
   }
 }
 
-module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
+module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.2.0' = {
   name: 'container-app'
   scope: resourceGroup
   params: {
@@ -144,14 +144,38 @@ module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
         value: managedIdentity.outputs.managedIdentityClientId
       }
     ]
-    secrets: {
-      secureList: [
-        {
-          name: 'appinsights-connection-string'
-          value: monitoring.outputs.applicationInsightsConnectionString
+    secrets: [
+      {
+        name: 'appinsights-connection-string'
+        value: monitoring.outputs.applicationInsightsConnectionString
+      }
+    ]
+    containerProbes: [
+      {
+        type: 'Liveness'
+        tcpSocket: {
+          port: 8000
         }
-      ]
-    }
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 10
+        failureThreshold: 5
+        successThreshold: 1
+      }
+      {
+        type: 'Readiness'
+        httpGet: {
+          path: '/health'
+          port: 8000
+          scheme: 'HTTP'
+        }
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 2
+        successThreshold: 2
+      }
+    ]
     targetPort: 8000
     containerMinReplicas: 1
     containerMaxReplicas: 1
