@@ -119,13 +119,13 @@ graph TB
 
 #### 実装技術
 
-- **Azure Verified Module**: `br/public:avm/ptn/azd/container-app-upsert:0.1.2`
+- **Azure Verified Module**: `br/public:avm/ptn/azd/container-app-upsert:0.2.0`
 - **条件付きロジック**: `!empty(containerAppImageName) ? containerAppImageName : ''`
 - **azd統合**: Azure Developer CLIとの完全な互換性
-- **ヘルスプローブ自動設定**: postprovisionフックにより、AVMでサポートされていないヘルスプローブを自動的に追加
-  - Liveness Probe: TCPポート8000を監視（60秒遅延、10秒間隔、タイムアウト10秒、失敗しきい値5）
-  - Readiness Probe: HTTP `GET /health` を監視（10秒遅延、5秒間隔、タイムアウト3秒、失敗しきい値2、成功しきい値2）
-  - 冪等性により、既存のプローブ設定を適切に検出・保持
+- **ヘルスプローブ統合設定**: AVM v0.2.0のcontainerProbesパラメータにより、Infrastructure as Codeとしてヘルスプローブを宣言的に管理
+  - Liveness Probe: TCPポート8000を監視（60秒遅延、10秒間隔、タイムアウト1秒、失敗しきい値3）
+  - Readiness Probe: HTTP `GET /health` を監視（10秒遅延、5秒間隔、タイムアウト1秒、失敗しきい値3、成功しきい値1）
+  - 設定の一元管理により、デプロイメント時の外部スクリプト依存を排除
 
 この戦略により、開発・テスト・本番環境での安定したデプロイメントと運用効率の向上を実現しています。
 
@@ -143,7 +143,7 @@ graph TB
   - コンテナイメージのビルド（azdが自動的に使用）
 - **[jq](https://jqlang.github.io/jq/)**: v1.6以上
   - JSONデータの処理とクエリ
-  - ヘルスプローブ自動設定スクリプトで使用
+  - 各種スクリプトでのAPIレスポンス処理
 - **Bash シェル**: 
   - Linux/macOS: 標準搭載
   - Windows: WSL2、Git Bash、またはAzure Cloud Shellを使用
@@ -210,7 +210,7 @@ graph TB
    - Container Registryへのプッシュ
    - Container Appへのデプロイ
    - マネージドIDの設定（Redisアクセスポリシー、ACR Pull権限）
-  - **ヘルスプローブの自動設定**: postprovisionフックにより、Liveness（TCP: 60秒遅延/10秒間隔/タイムアウト10秒/失敗5）とReadiness（HTTP /health: 10秒遅延/5秒間隔/タイムアウト3秒/失敗2/成功2）を自動設定します
+   - **ヘルスプローブの宣言的設定**: AVM v0.2.0のcontainerProbesパラメータにより、Liveness（TCP: 60秒遅延/10秒間隔）とReadiness（HTTP /health: 10秒遅延/5秒間隔）を Infrastructure as Code として自動設定
 
 3. 動作確認：
    ```bash

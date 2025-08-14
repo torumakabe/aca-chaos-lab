@@ -2,6 +2,17 @@
 
 このガイドでは、Azure Container Apps Chaos LabをAzureサブスクリプションにデプロイする手順を説明します。
 
+## アーキテクチャ概要
+
+Azure Chaos Labは、**Azure Verified Module (AVM) v0.2.0**を基盤とした、Infrastructure as Code による完全宣言的なデプロイメントを実現しています。
+
+### 主要な特徴
+
+- **Container App Upsert戦略**: AVM v0.2.0による条件付きデプロイメント
+- **統合ヘルスプローブ**: containerProbesパラメータによる宣言的管理
+- **外部依存排除**: postprovisionフック不使用、純粋なInfrastructure as Code
+- **マネージドID統合**: Redis接続とACRアクセスの自動設定
+
 ## 前提条件
 
 1. **Azureサブスクリプション**に以下のリソースプロバイダーが登録されていること：
@@ -66,9 +77,16 @@ azd up
 # 2. インフラストラクチャのデプロイ（Bicep）
 # 3. コンテナイメージのビルドとプッシュ
 # 4. Container Appsへのアプリケーションデプロイ
+# 5. ヘルスプローブの宣言的設定（AVM v0.2.0 containerProbesパラメータ）
 ```
 
-### 実際のデプロイ結果（2025年7月28日検証）
+### デプロイメントの特徴
+
+- **外部スクリプト不要**: postprovisionフックは使用せず、すべてBicepテンプレート内で完結
+- **ヘルスプローブ統合**: Liveness（TCP 8000、60秒遅延）とReadiness（HTTP /health、10秒遅延）が自動設定
+- **一元管理**: すべてのリソース設定がInfrastructure as Codeとして管理
+
+### 実際のデプロイ結果（2025年8月14日 AVM v0.2.0移行後）
 
 ```
 Deploying services (azd deploy)
@@ -79,7 +97,8 @@ Deploying services (azd deploy)
 SUCCESS: Your application was provisioned and deployed to Azure
 ```
 
-デプロイ時間: 約10-15分（初回）
+**デプロイ時間**: 約4分46秒（AVM v0.2.0による効率化）
+**特徴**: postprovisionフック削除により、デプロイメントが簡素化され高速化
 
 ## ステップ4: Redisアクセスの設定
 

@@ -11,9 +11,3 @@ services:
     docker:
       path: ./Dockerfile
       registry: ${AZURE_CONTAINER_REGISTRY_LOGIN_SERVER}
-
-hooks:
-  postprovision:
-    shell: sh
-    run: scripts/add-health-probes.sh
-    continueOnError: false

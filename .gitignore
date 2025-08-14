@@ -84,3 +84,8 @@ CLAUDE.md
 results/
 
 tmp/
+
+# Bicep compiled JSON files
+infra/**/*.json
+!infra/abbreviations.json
+!infra/main.parameters.json
