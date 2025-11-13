@@ -13,9 +13,6 @@
     },
     "containerAppImageName": {
       "value": "${SERVICE_APP_IMAGE_NAME}"
-    },
-    "containerAppExists": {
-      "value": "${SERVICE_APP_RESOURCE_EXISTS:false}"
     }
   }
 }
