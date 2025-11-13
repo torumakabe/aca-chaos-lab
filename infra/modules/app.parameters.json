@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "containerAppsEnvironmentId": {
+      "value": "${AZURE_CONTAINER_APPS_ENVIRONMENT_ID}"
+    },
+    "containerRegistryLoginServer": {
+      "value": "${AZURE_CONTAINER_REGISTRY_LOGIN_SERVER}"
+    },
+    "managedIdentityId": {
+      "value": "${AZURE_MANAGED_IDENTITY_ID}"
+    },
+    "managedIdentityClientId": {
+      "value": "${AZURE_MANAGED_IDENTITY_CLIENT_ID}"
+    },
+    "applicationInsightsName": {
+      "value": "${AZURE_APPLICATION_INSIGHTS_NAME}"
+    },
+    "redisHost": {
+      "value": "${AZURE_REDIS_HOST}"
+    },
+    "imageName": {
+      "value": "${SERVICE_APP_IMAGE_NAME}"
+    }
+  }
+}

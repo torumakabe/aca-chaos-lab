@@ -91,7 +91,7 @@ class RedisClient:
         )
 
         # Validate connection
-        await self.client.ping()
+        _ = await self.client.ping()  # type: ignore[misc]
         self._connection_count += 1
 
     async def _get_entra_token(self) -> str:
@@ -216,7 +216,7 @@ class RedisClient:
             return False
         try:
             start_time = time.time()
-            await self.client.ping()
+            _ = await self.client.ping()  # type: ignore[misc]
             end_time = time.time()
             latency_ms = int((end_time - start_time) * 1000)
             record_redis_metrics(True, latency_ms)
@@ -293,7 +293,7 @@ class RedisClient:
 
         start_time = time.time()
         try:
-            result = await self.client.ping()
+            result: bool = await self.client.ping()  # type: ignore[misc]
             end_time = time.time()
             latency_ms = int((end_time - start_time) * 1000)
 
@@ -310,11 +310,11 @@ class RedisClient:
                 )
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
-                result = await self.client.ping()
+                retry_result: bool = await self.client.ping()  # type: ignore[misc]
                 end_time = time.time()
                 latency_ms = int((end_time - start_time) * 1000)
                 record_redis_metrics(True, latency_ms)
-                return bool(result)
+                return bool(retry_result)
             # Record metrics for failed ping
             record_redis_metrics(False, -1)
             raise
