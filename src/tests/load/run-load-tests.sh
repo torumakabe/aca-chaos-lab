@@ -15,14 +15,14 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 load_azd_environment
 
 # Check parameters or use azd values
-if [ $# -eq 0 ] && [ -n "${SERVICE_APP_URI:-}" ]; then
+if [ $# -eq 0 ] && [ -n "${SERVICE_APP_URL_FROM_MODULE:-}" ]; then
     # Use azd environment values
     echo "Using values from Azure Developer CLI environment"
-    HOST="$SERVICE_APP_URI"
+    HOST="$SERVICE_APP_URL_FROM_MODULE"
     SCENARIO="baseline"
-elif [ $# -eq 1 ] && [ -n "${SERVICE_APP_URI:-}" ]; then
+elif [ $# -eq 1 ] && [ -n "${SERVICE_APP_URL_FROM_MODULE:-}" ]; then
     # Use azd host with provided scenario
-    HOST="$SERVICE_APP_URI"
+    HOST="$SERVICE_APP_URL_FROM_MODULE"
     SCENARIO="$1"
 elif [ $# -lt 2 ]; then
     echo "Usage: $0 [host] [scenario]"
