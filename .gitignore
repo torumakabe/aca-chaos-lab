@@ -85,7 +85,9 @@ results/
 
 tmp/
 
-# Bicep compiled JSON files
+# Bicep compiled JSON files - exclude all JSON in infra/
 infra/**/*.json
+
+# Exception: Keep parameter files and static data
+!infra/**/*.parameters.json
 !infra/abbreviations.json
-!infra/main.parameters.json
