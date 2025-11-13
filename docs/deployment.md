@@ -8,9 +8,9 @@ Azure Chaos Labは、**Azure Verified Module (AVM) v0.2.0**を基盤とした、
 
 ### 主要な特徴
 
-- **Container App Upsert戦略**: AVM v0.2.0による条件付きデプロイメント
-- **統合ヘルスプローブ**: containerProbesパラメータによる宣言的管理
-- **外部依存排除**: postprovisionフック不使用、純粋なInfrastructure as Code
+- **Azure Verified Module**: AVM v0.17.0を使用した標準的なデプロイメント
+- **ヘルスプローブ設定**: Liveness/Readinessプローブの宣言的管理
+- **外部依存排除**: 純粋なInfrastructure as Codeによるデプロイ
 - **マネージドID統合**: Redis接続とACRアクセスの自動設定
 
 ## 前提条件
@@ -312,45 +312,3 @@ azd down --purge
 # または手動で
 az group delete --name $RESOURCE_GROUP --yes
 ```
-
-## Container App Upsert戦略
-
-このプロジェクトは、Azure Verified Module (AVM) の Container App upsert戦略を使用してデプロイされます。
-
-### upsert戦略の特徴
-
-- **インクリメンタル更新**: 既存のContainer Appを完全に置換せずに、変更された部分のみを更新
-- **設定保持**: 明示的に変更されない設定値を自動的に保持
-- **条件付きイメージ更新**: 新しいコンテナイメージが指定された場合のみ更新、そうでなければ既存イメージを維持
-- **ダウンタイム削減**: 全体の置換ではなく部分更新によりダウンタイムを最小化
-
-### 実装詳細
-
-```bicep
-// AVMモジュールの使用
-module containerApp 'br/public:avm/ptn/azd/container-app-upsert:0.1.2' = {
-  name: 'container-app'
-  params: {
-    // 条件付きイメージ更新ロジック
-    imageName: !empty(containerAppImageName) ? containerAppImageName : ''
-    exists: false // モジュールが自動的に存在を判定
-    // その他のパラメータ...
-  }
-}
-```
-
-### デプロイ動作
-
-1. **初回デプロイ**: 通常のContainer App作成と同じ動作
-2. **更新デプロイ**: 
-   - 新しいイメージが指定された場合: イメージを更新
-   - イメージが空の場合: 既存のイメージを保持
-   - 環境変数等の変更: 指定された変更のみ適用
-   - 未指定の設定: 既存の値を保持
-
-### 利点
-
-- **運用効率**: 不要な設定変更を避けて運用の安定性を向上
-- **Azure推奨**: Microsoftが公式に推奨するベストプラクティス
-- **azd統合**: Azure Developer CLIとの完全な互換性
-- **保守性**: 標準化されたAVMモジュールによる保守の簡素化
