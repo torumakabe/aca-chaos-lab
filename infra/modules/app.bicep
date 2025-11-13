@@ -148,7 +148,6 @@ module alertRules './alert-rules.bicep' = {
   }
 }
 
-output name string = containerApp.outputs.name
-output fqdn string = containerApp.outputs.fqdn
-output alert5xxId string = alertRules.outputs.alert5xxId
-output alertResponseTimeId string = alertRules.outputs.alertResponseTimeId
+// Output only the application URL needed for load testing and monitoring
+// Using AZURE_ prefix and SCREAMING_SNAKE_CASE for consistency with main.bicep outputs
+output SERVICE_APP_URL_FROM_MODULE string = 'https://${containerApp.outputs.fqdn}'
