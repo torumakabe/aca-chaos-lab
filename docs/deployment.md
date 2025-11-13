@@ -23,7 +23,7 @@ Azure Chaos Labは、**Azure Verified Module (AVM) v0.2.0**を基盤とした、
 
 2. **インストール済みツール**：
    - Azure CLI v2.75.0以上
-   - Azure Developer CLI (`azd`) v1.18.0以上
+   - Azure Developer CLI (`azd`) v1.21.1以上
    - Docker v28.3以上
    - jq v1.6以上（JSONデータ処理）
    - Git

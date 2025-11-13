@@ -133,7 +133,7 @@ graph TB
 
 ### 必須ツール
 - **Azure サブスクリプション**: 適切な権限（Contributor以上）が必要
-- **[Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)**: v1.18.0以上
+- **[Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)**: v1.21.1以上
   - インフラストラクチャのプロビジョニングとデプロイ
   - 環境変数の管理
 - **[Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)**: v2.75.0以上
