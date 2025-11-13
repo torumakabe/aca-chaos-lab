@@ -104,31 +104,6 @@ graph TB
 - **設定可能**: テレメトリ機能の有効/無効を環境変数で制御可能
 - **Container Apps監視**: 応答監視アラート（5xxエラー、応答時間）
 
-## デプロイメント戦略
-
-### Container App Upsert戦略
-
-このプロジェクトは、Azure Verified Module (AVM) の [Container App upsert戦略](https://learn.microsoft.com/azure/developer/azure-developer-cli/container-apps-workflows#container-app-upsert-strategy) を採用しています。
-
-#### 主な特徴
-
-- **インクリメンタル更新**: 既存のContainer Appを完全に置換せずに、変更された部分のみを更新
-- **設定保持**: 明示的に変更されない設定値（環境変数、スケーリング設定等）を自動的に保持
-- **条件付きイメージ更新**: 新しいコンテナイメージが指定された場合のみ更新、未指定時は既存イメージを保持
-- **ダウンタイム削減**: リソース全体の置換ではなく部分更新によりダウンタイムを最小化
-
-#### 実装技術
-
-- **Azure Verified Module**: `br/public:avm/ptn/azd/container-app-upsert:0.2.0`
-- **条件付きロジック**: `!empty(containerAppImageName) ? containerAppImageName : ''`
-- **azd統合**: Azure Developer CLIとの完全な互換性
-- **ヘルスプローブ統合設定**: AVM v0.2.0のcontainerProbesパラメータにより、Infrastructure as Codeとしてヘルスプローブを宣言的に管理
-  - Liveness Probe: TCPポート8000を監視（60秒遅延、10秒間隔、タイムアウト1秒、失敗しきい値3）
-  - Readiness Probe: HTTP `GET /health` を監視（10秒遅延、5秒間隔、タイムアウト1秒、失敗しきい値3、成功しきい値1）
-  - 設定の一元管理により、デプロイメント時の外部スクリプト依存を排除
-
-この戦略により、開発・テスト・本番環境での安定したデプロイメントと運用効率の向上を実現しています。
-
 ## 前提条件
 
 ### 必須ツール
@@ -210,7 +185,7 @@ graph TB
    - Container Registryへのプッシュ
    - Container Appへのデプロイ
    - マネージドIDの設定（Redisアクセスポリシー、ACR Pull権限）
-   - **ヘルスプローブの宣言的設定**: AVM v0.2.0のcontainerProbesパラメータにより、Liveness（TCP: 60秒遅延/10秒間隔）とReadiness（HTTP /health: 10秒遅延/5秒間隔）を Infrastructure as Code として自動設定
+   - ヘルスプローブ設定（Liveness/Readiness）
 
 3. 動作確認：
    ```bash
