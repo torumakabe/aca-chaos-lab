@@ -4,6 +4,7 @@ param registryName string
 param vnetId string
 param privateEndpointSubnetId string
 param currentUserPrincipalId string = ''
+param containerAppPrincipalId string = ''
 
 resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: registryName
@@ -26,6 +27,17 @@ resource acrPushRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (
   properties: {
     roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', '8311e382-0749-4cb8-b61a-304f252e45ec')
     principalId: currentUserPrincipalId
+  }
+}
+
+// Grant AcrPull role to container app managed identity
+resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (containerAppPrincipalId != '') {
+  name: guid(containerRegistry.id, containerAppPrincipalId, '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
+    principalId: containerAppPrincipalId
+    principalType: 'ServicePrincipal'
   }
 }
 
