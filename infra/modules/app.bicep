@@ -34,6 +34,9 @@ var tags = {
   'azd-env-name': environmentName
   'azd-service-name': 'app'
 }
+var commonTags = {
+  'azd-env-name': environmentName
+}
 
 resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: applicationInsightsName
@@ -140,7 +143,7 @@ module alertRules './alert-rules.bicep' = {
   name: 'alert-rules'
   params: {
     location: location
-    tags: tags
+    tags: commonTags
     containerAppName: containerApp.outputs.name
   }
 }
