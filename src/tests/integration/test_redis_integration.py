@@ -39,7 +39,7 @@ class TestRedisIntegration:
     async def test_create_direct_redis_client(self, redis_host_port):
         """Test creating Redis client directly."""
         host, port = redis_host_port
-        
+
         # Create client without SSL for local testing
         client = Redis(
             host=host,
@@ -48,12 +48,12 @@ class TestRedisIntegration:
             socket_connect_timeout=5,
             socket_timeout=5,
         )
-        
+
         try:
             # Test connection
             result = await client.ping()
             assert result is True
-            
+
             # Test operations
             await client.set("integration_test", "success")
             value = await client.get("integration_test")

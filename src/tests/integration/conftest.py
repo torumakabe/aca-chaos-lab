@@ -20,7 +20,7 @@ async def redis_client(redis_container):
     """Create Redis client connected to test container."""
     host = redis_container.get_container_host_ip()
     port = redis_container.get_exposed_port(6379)
-    
+
     client = Redis(
         host=host,
         port=int(port),
@@ -28,12 +28,12 @@ async def redis_client(redis_container):
         socket_connect_timeout=5,
         socket_timeout=5,
     )
-    
+
     # Verify connection
     await client.ping()
-    
+
     yield client
-    
+
     # Cleanup
     await client.flushall()
     await client.aclose()

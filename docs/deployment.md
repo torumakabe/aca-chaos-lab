@@ -115,6 +115,8 @@ SUCCESS: Your application was provisioned and deployed to Azure
 
 ## ステップ5: デプロイの確認
 
+### 基本動作確認
+
 1. アプリケーションURLを取得：
    ```bash
    azd show
@@ -148,6 +150,67 @@ SUCCESS: Your application was provisioned and deployed to Azure
    {
      "message": "Hello from Container Apps Chaos Lab",
      "redis_data": "Data created at 2025-07-28T05:13:39.317321+00:00",
+     "timestamp": "2025-07-28T05:13:39.317475+00:00"
+   }
+   ```
+
+### テストによる検証
+
+デプロイ後、自動テストを実行して全体的な動作を確認できます：
+
+#### E2Eテストの実行
+
+```bash
+# プロジェクトルートから
+cd src
+
+# E2Eテストスクリプトを実行（azd環境変数を自動読み込み）
+./tests/e2e/run-e2e-tests.sh
+
+# または直接pytest
+RUN_E2E_TESTS=true uv run pytest tests/e2e/ -v -m e2e
+
+# プロジェクトルートに戻る
+cd ..
+```
+
+**テスト内容**：
+- ヘルスエンドポイント応答確認
+- メインエンドポイントのRedis操作確認
+- カオスステータスエンドポイント確認
+
+#### ローカル統合テストの実行
+
+デプロイ前にローカルで統合テストを実行することも推奨されます：
+
+```bash
+# プロジェクトルートから
+cd src
+
+# Testcontainersによる統合テスト
+make test-integration
+
+# または
+./tests/run-integration-tests.sh
+
+# プロジェクトルートに戻る
+cd ..
+```
+
+**テスト内容**：
+- Redis基本操作（ping, get, set, delete, incr）
+- RedisClientのAccess Key認証モード動作確認
+- Docker上のRedisコンテナとの統合確認
+
+#### テスト環境の理解
+
+| テスト層 | 実行環境 | Redis認証 | 目的 |
+|---------|---------|----------|------|
+| Unit Tests | ローカル（モック） | なし | 高速フィードバック |
+| Integration Tests | ローカル（Docker） | Access Key | 実Redis動作確認 |
+| E2E Tests | Azure環境 | Entra ID | 本番環境検証 |
+
+**重要**: 統合テストとE2Eテストで異なる認証方式を使用することで、各環境に最適なテスト戦略を実現しています。
      "timestamp": "2025-07-28T08:54:11.928616+00:00"
    }
    ```
