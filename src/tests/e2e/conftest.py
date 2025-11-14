@@ -13,7 +13,7 @@ azd_env = load_azd_environment()
 
 # Test configuration from environment
 BASE_URL = os.getenv("TEST_BASE_URL") or azd_env.get(
-    "SERVICE_APP_URI", "http://localhost:8000"
+    "SERVICE_APP_URL", "http://localhost:8000"
 )
 
 # Skip E2E tests by default unless explicitly enabled

@@ -62,7 +62,7 @@ def load_azd_environment() -> dict:
         "SERVICE_APP_NAME", os.getenv("CONTAINER_APP_NAME")
     )
     env["CONTAINER_APP_URI"] = get_env_value(
-        "SERVICE_APP_URL_FROM_MODULE", os.getenv("CONTAINER_APP_URI")
+        "SERVICE_APP_URL", os.getenv("CONTAINER_APP_URI")
     )
     env["REDIS_HOST"] = get_env_value("AZURE_REDIS_HOST", os.getenv("REDIS_HOST"))
     env["LOCATION"] = get_env_value("AZURE_LOCATION", os.getenv("LOCATION"))

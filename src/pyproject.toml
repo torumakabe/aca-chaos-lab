@@ -80,6 +80,7 @@ markers = [
     "integration: Integration tests with real dependencies (e.g., Testcontainers)",
     "e2e: End-to-end tests against deployed environments",
 ]
+filterwarnings = ["ignore::DeprecationWarning:testcontainers.*"]
 
 [tool.coverage.run]
 source = ["app"]

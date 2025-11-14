@@ -191,7 +191,7 @@ graph TB
    ```bash
    # プロジェクトルートディレクトリで実行
    # エンドポイントURLの取得
-   APP_URL=$(azd env get-value SERVICE_APP_URI)
+   APP_URL=$(azd env get-value SERVICE_APP_URL)
    
    # ヘルスチェック
    curl "${APP_URL}/health"
@@ -498,7 +498,7 @@ azdが管理する環境変数の確認と取得：
 azd env get-values
 
 # 特定の値を取得（例）
-azd env get-value SERVICE_APP_URI
+azd env get-value SERVICE_APP_URL
 azd env get-value AZURE_RESOURCE_GROUP
 azd env get-value SERVICE_APP_NAME
 ```
