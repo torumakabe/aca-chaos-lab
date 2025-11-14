@@ -17,18 +17,22 @@ install: ## Install development dependencies
 
 .PHONY: test
 test: ## Run unit tests
-	uv run pytest tests/unit/ -v
+	uv run pytest tests/unit/ -v -m unit
 
 .PHONY: test-integration
-test-integration: ## Run integration tests
+test-integration: ## Run integration tests with Testcontainers
 	./tests/run-integration-tests.sh
+
+.PHONY: test-e2e
+test-e2e: ## Run E2E tests against deployed environment
+	./tests/e2e/run-e2e-tests.sh
 
 .PHONY: test-load
 test-load: ## Run load tests (baseline scenario)
 	cd tests/load && ./run-load-tests.sh baseline
 
 .PHONY: test-all
-test-all: test test-integration ## Run all tests
+test-all: test test-integration ## Run unit and integration tests
 
 .PHONY: lint
 lint: ## Run linting

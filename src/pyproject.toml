@@ -29,6 +29,7 @@ dev = [
     "locust>=2.20.0",
     "freezegun>=1.4.0",
     "httpx>=0.26.0",
+    "testcontainers[redis]>=4.0.0",
 ]
 
 [build-system]
@@ -73,7 +74,12 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 asyncio_mode = "auto"
-markers = ["e2e: marks tests as end-to-end tests"]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "unit: Unit tests with mocks",
+    "integration: Integration tests with real dependencies (e.g., Testcontainers)",
+    "e2e: End-to-end tests against deployed environments",
+]
 
 [tool.coverage.run]
 source = ["app"]

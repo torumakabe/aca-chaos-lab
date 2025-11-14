@@ -1,3 +1,4 @@
+import pytest; pytestmark = pytest.mark.unit
 """Unit tests for telemetry module."""
 
 from unittest.mock import Mock, patch

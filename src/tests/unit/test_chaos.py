@@ -1,3 +1,4 @@
+import pytest; pytestmark = pytest.mark.unit
 """Unit tests for chaos engineering endpoints."""
 
 from datetime import UTC, datetime, timedelta

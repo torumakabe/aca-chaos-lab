@@ -1,3 +1,4 @@
+import pytest; pytestmark = pytest.mark.unit
 """Unit tests for main FastAPI application."""
 
 from unittest.mock import AsyncMock, patch

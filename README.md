@@ -323,6 +323,24 @@ cd ..
 
 **実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
 
+統合テストは`run-integration-tests.sh`スクリプトを使用して実行します。このスクリプトはazd環境変数を自動的に読み込み、必要な設定を行います。
+
+```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
+# 統合テストの実行（azdデプロイ済み環境）
+./tests/run-integration-tests.sh
+
+# または、Makefileを使用
+make test-integration
+
+# テスト完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
+```
+
+**環境変数を手動で設定する場合**（azd環境がない場合）：
+
 ```bash
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
@@ -332,6 +350,7 @@ export TEST_BASE_URL=https://myapp.azurecontainerapps.io
 export TEST_RESOURCE_GROUP=my-resource-group
 export TEST_NSG_NAME=my-nsg
 export TEST_CONTAINER_APP_NAME=my-app
+export RUN_INTEGRATION_TESTS=true
 
 # 統合テストの実行
 uv run pytest tests/integration/ -v -m e2e
