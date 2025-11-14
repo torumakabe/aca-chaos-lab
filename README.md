@@ -280,11 +280,17 @@ azd deploy
 
 様々な負荷テストシナリオの実行：
 
-**実行場所：負荷テストディレクトリ** (`aca-chaos-lab/src/tests/load/`)
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
 
 ```bash
-# プロジェクトルートディレクトリから負荷テストディレクトリに移動
-cd src/tests/load
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
+# ベースラインテスト（カオスなし）
+make test-load
+
+# または負荷テストディレクトリから直接実行
+cd tests/load
 
 # ベースラインテスト（カオスなし）
 ./run-load-tests.sh baseline
@@ -298,7 +304,7 @@ cd src/tests/load
 # カオステスト（障害注入あり）
 ./run-load-tests.sh chaos
 
-# 負荷テスト完了後はプロジェクトルートに戻る
+# プロジェクトルートに戻る
 cd ../../..
 ```
 
@@ -313,7 +319,10 @@ cd ../../..
 cd src
 
 # ユニットテストの実行
-uv run pytest tests/unit/ -v
+make test
+
+# または直接pytestを使用
+uv run pytest tests/unit/ -v -m unit
 
 # テスト完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -336,10 +345,10 @@ cd ..
 cd src
 
 # 統合テストの実行（Testcontainersが自動でRedisコンテナを起動）
-./tests/run-integration-tests.sh
-
-# または、Makefileを使用
 make test-integration
+
+# または直接スクリプトを実行
+./tests/run-integration-tests.sh
 
 # テスト完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -390,10 +399,10 @@ E2Eテストは、Azureにデプロイされた実環境に対してAPIテスト
 cd src
 
 # E2Eテストの実行
-./tests/e2e/run-e2e-tests.sh
-
-# または、Makefileを使用
 make test-e2e
+
+# または直接スクリプトを実行
+./tests/e2e/run-e2e-tests.sh
 
 # テスト完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -424,14 +433,17 @@ cd ..
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
 
-# リンティング
-uv run ruff check app/
+# リンティング（自動修正付き）
+make lint
 
 # 型チェック
-uv run mypy app/
+make typecheck
 
-# 自動修正
-uv run ruff check app/ --fix
+# コードフォーマット
+make format
+
+# すべてのチェックを実行（lint + typecheck + test）
+make check
 
 # 開発作業完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -445,7 +457,10 @@ cd ..
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
 
-# Dockerイメージのビルド
+# Dockerイメージのビルド（requirements.txt自動生成）
+make build
+
+# またはDockerコマンドを直接使用
 docker build -t aca-chaos-lab:latest .
 
 # ビルド完了後はプロジェクトルートに戻る（必要に応じて）
