@@ -1,29 +1,11 @@
-"""Basic API integration tests."""
+"""E2E API tests for deployed environments."""
 
-import os
-import sys
 from typing import Any
 
 import httpx
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from azd_env_helper import load_azd_environment
-
-# Load environment from azd
-azd_env = load_azd_environment()
-
-# Test configuration from environment
-BASE_URL = os.getenv("TEST_BASE_URL") or azd_env.get(
-    "CONTAINER_APP_URI", "http://localhost:8000"
-)
-
-# Skip integration tests by default unless explicitly enabled
-RUN_INTEGRATION = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
-pytestmark = pytest.mark.skipif(
-    not RUN_INTEGRATION,
-    reason="Integration tests disabled. Set RUN_INTEGRATION_TESTS=true to enable.",
-)
+pytestmark = pytest.mark.e2e
 
 
 class APIClient:
@@ -57,15 +39,14 @@ class APIClient:
 
 
 @pytest.fixture
-async def api_client():
+async def api_client(base_url, skip_if_e2e_disabled):
     """Create API client."""
-    client = APIClient(BASE_URL)
+    client = APIClient(base_url)
     yield client
     await client.close()
 
 
 @pytest.mark.asyncio
-@pytest.mark.e2e
 class TestBasicAPI:
     """Test basic API functionality."""
 

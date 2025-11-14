@@ -8,6 +8,7 @@
 - 2025-07-31: OpenTelemetry実装のシンプル化
 - 2025-08-03: テレメトリとロギング一貫性向上設計追加
 - 2025-08-08: リファクタリング反映（Redisトークンキャッシュの安全マージン、自動再認証・再接続、FastAPIのapp.stateによるDI、CIのBicepビルド簡素化）
+- 2025-11-14: Testcontainersベースの統合テスト設計追加（RedisClient Access Key認証モード、3層テスト構造）
 
 ## アーキテクチャ概要
 
@@ -1431,3 +1432,177 @@ git checkout HEAD~1 -- infra/main.bicep azure.yaml
 git checkout HEAD~1 -- scripts/add-health-probes.sh
 azd deploy --no-prompt
 ```
+
+## テスト戦略設計
+
+### テスト階層構造
+
+システムは以下の3層テスト構造を採用：
+
+```
+tests/
+├── unit/          # 単体テスト（モック使用）
+├── integration/   # 統合テスト（Testcontainers使用）
+└── e2e/          # E2Eテスト（Azureデプロイ環境）
+```
+
+### RedisClient認証設計
+
+#### 本番環境: Entra ID認証
+```python
+# app/redis_client.py
+client = RedisClient(
+    host=redis_host,
+    port=redis_port,
+    settings=settings,
+    use_entra_auth=True,  # デフォルト: Entra ID認証
+)
+```
+
+**特徴**:
+- Azure Managed Identity を使用
+- トークンベース認証（120秒前更新）
+- `rediss://` プロトコル（TLS必須）
+- 自動再認証・再接続
+
+#### テスト環境: Access Key認証
+```python
+# tests/integration/test_app_integration.py
+client = RedisClient(
+    host=host,
+    port=port,
+    settings=test_settings,
+    use_entra_auth=False,  # Access Key認証
+    password=None,  # Testcontainersはパスワードなし
+)
+```
+
+**特徴**:
+- パスワードベース認証（またはパスワードなし）
+- `redis://` プロトコル（平文）または `rediss://`（TLS）
+- Testcontainersのローカル Redis コンテナで使用
+- Azure サービス依存なし
+
+### 統合テスト設計
+
+#### Testcontainersによる自動化
+```python
+# tests/integration/conftest.py
+@pytest.fixture(scope="session")
+def redis_container():
+    """Start Redis container for integration tests."""
+    container = RedisContainer("redis:7-alpine")
+    container.start()
+    yield container
+    container.stop()
+```
+
+**利点**:
+- Docker環境があれば外部依存なし
+- 各テスト実行で自動的にRedis起動・停止
+- 本番環境構成に近い実Redis使用
+
+#### テスト実行フロー
+```mermaid
+graph LR
+    A[pytest起動] --> B[Testcontainers]
+    B --> C[Redis Docker起動]
+    C --> D[RedisClient接続]
+    D --> E[統合テスト実行]
+    E --> F[コンテナ停止]
+    F --> G[テスト完了]
+```
+
+### CI/CD統合
+
+#### GitHub Actions ワークフロー
+```yaml
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest tests/unit/ -m unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pytest tests/integration/ -m integration
+```
+
+**並列実行**:
+- Unit Tests と Integration Tests は独立して並列実行
+- Integration Tests は Docker 環境で Testcontainers を自動起動
+- 各ジョブは分離された環境で実行
+
+### テストマーカー設計
+
+#### pytest設定
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+markers = [
+    "unit: Unit tests with mocks",
+    "integration: Integration tests with real dependencies (e.g., Testcontainers)",
+    "e2e: End-to-end tests against deployed environments",
+]
+```
+
+#### 実行例
+```bash
+# 単体テストのみ
+pytest tests/unit/ -m unit
+
+# 統合テストのみ
+pytest tests/integration/ -m integration
+
+# E2Eテストのみ（環境変数必要）
+RUN_E2E_TESTS=true pytest tests/e2e/ -m e2e
+```
+
+### テストカバレッジ目標
+
+| テスト層 | 目標カバレッジ | 現状 |
+|---------|--------------|-----|
+| Unit Tests | 85%以上 | 85%+ |
+| Integration Tests | 主要機能網羅 | Redis操作全般 |
+| E2E Tests | エンドポイント全体 | 基本API |
+
+### RedisClient設計詳細
+
+#### メソッド実装
+```python
+class RedisClient:
+    async def connect(self):
+        """接続（Entra IDまたはAccess Key）"""
+        if not self.use_entra_auth:
+            return await self._connect_with_access_key()
+        # Entra ID認証フロー
+    
+    async def _connect_with_access_key(self):
+        """Access Key認証での接続（テスト用）"""
+        protocol = "rediss" if use_ssl else "redis"
+        self.client = redis.from_url(
+            f"{protocol}://{host}:{port}",
+            password=self.password,
+            # ...
+        )
+    
+    # 基本操作メソッド
+    async def get(self, key: str) -> str | None
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool
+    async def delete(self, key: str) -> bool
+    async def incr(self, key: str) -> int
+    async def increment(self, key: str) -> int  # incrのエイリアス
+```
+
+#### 認証エラー自動回復
+Entra ID認証時のみ、認証エラー検知で1回のみ自動再接続：
+1. エラー検知（NOAUTH/WRONGPASS等）
+2. トークン再取得
+3. クライアント再構築
+4. ping検証
+5. 操作再実行
+
+Access Key認証では再認証不要のため、この機能は無効。

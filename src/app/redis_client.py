@@ -18,11 +18,29 @@ logger = logging.getLogger(__name__)
 class RedisClient:
     """Redis client with Azure Entra ID authentication support."""
 
-    def __init__(self, host: str, port: int = 10000, settings=None):
-        """Initialize Redis client configuration."""
+    def __init__(
+        self,
+        host: str,
+        port: int = 10000,
+        settings=None,
+        use_entra_auth: bool = True,
+        password: str | None = None,
+    ):
+        """Initialize Redis client configuration.
+
+        Args:
+            host: Redis server hostname
+            port: Redis server port
+            settings: Application settings object
+            use_entra_auth: If True, use Entra ID authentication (default).
+                          If False, use Access Key authentication (for testing)
+            password: Access key password (only used when use_entra_auth=False)
+        """
         self.host = host
         self.port = port
         self.settings = settings
+        self.use_entra_auth = use_entra_auth
+        self.password = password
         self.client: redis.Redis | None = None
         self.credential: DefaultAzureCredential | None = None
         self._token_cache: dict[str, Any] = {}
@@ -128,12 +146,95 @@ class RedisClient:
 
             return token.token
 
+    async def _connect_with_access_key(self):
+        """Connect to Redis using Access Key authentication (for testing)."""
+        try:
+            logger.info("Using Access Key authentication for Redis connection")
+
+            # Use connection pool settings from config or defaults
+            max_connections = (
+                getattr(self.settings, "redis_max_connections", 50)
+                if self.settings
+                else 50
+            )
+            socket_timeout = (
+                getattr(self.settings, "redis_socket_timeout", 3)
+                if self.settings
+                else 3
+            )
+            socket_connect_timeout = (
+                getattr(self.settings, "redis_socket_connect_timeout", 3)
+                if self.settings
+                else 3
+            )
+
+            # Configure retry with exponential backoff
+            max_retries = (
+                getattr(self.settings, "redis_max_retries", 1) if self.settings else 1
+            )
+            backoff_base = (
+                getattr(self.settings, "redis_backoff_base", 1) if self.settings else 1
+            )
+            backoff_cap = (
+                getattr(self.settings, "redis_backoff_cap", 3) if self.settings else 3
+            )
+
+            retry_strategy = Retry(
+                backoff=ExponentialBackoff(base=backoff_base, cap=backoff_cap),
+                retries=max_retries,
+            )
+
+            # Determine SSL based on settings (default: no SSL for access key mode)
+            use_ssl = (
+                getattr(self.settings, "redis_ssl", False) if self.settings else False
+            )
+            protocol = "rediss" if use_ssl else "redis"
+
+            # Create Redis client with Access Key authentication
+            # For testing with Testcontainers, use redis:// (no SSL)
+            connection_kwargs = {
+                "decode_responses": True,
+                "socket_connect_timeout": socket_connect_timeout,
+                "socket_timeout": socket_timeout,
+                "retry": retry_strategy,
+                "retry_on_error": [redis.ConnectionError, redis.TimeoutError],
+                "health_check_interval": 30,
+                "max_connections": max_connections,
+            }
+
+            if self.password:
+                connection_kwargs["password"] = self.password
+
+            self.client = redis.from_url(
+                f"{protocol}://{self.host}:{self.port}",
+                **connection_kwargs,
+            )
+
+            # Test connection
+            logger.info("Testing Redis connection with ping")
+            await self.client.ping()
+            logger.info("Redis connection successful!")
+
+            # Increment connection count
+            self._connection_count += 1
+
+        except Exception as e:
+            logger.error(f"Redis connection failed: {str(e)}")
+            if self.client:
+                await self.client.aclose()
+                self.client = None
+            raise Exception(f"Failed to connect to Redis: {str(e)}") from e
+
     async def connect(self):
-        """Connect to Redis with Entra ID authentication."""
+        """Connect to Redis with Entra ID or Access Key authentication."""
         try:
             logger.info(f"Connecting to Redis at {self.host}:{self.port}")
 
-            # Get Entra ID token
+            # Use Access Key authentication for testing (no Entra ID)
+            if not self.use_entra_auth:
+                return await self._connect_with_access_key()
+
+            # Get Entra ID token for production
             token = await self._get_entra_token()
 
             # Create Redis client with token as password
@@ -284,6 +385,30 @@ class RedisClient:
                 await self._reconnect_with_new_token()
                 result = await self.client.incr(key)
                 return int(result)
+            raise
+
+    async def incr(self, key: str) -> int:
+        """Alias for increment method for consistency with redis-py API."""
+        return await self.increment(key)
+
+    async def delete(self, key: str) -> bool:
+        """Delete key from Redis."""
+        if not self.client:
+            raise Exception("Redis client not initialized")
+        try:
+            result = await self.client.delete(key)
+            return bool(result)
+        except Exception as e:
+            if self._is_auth_error(e):
+                backoff = (
+                    getattr(self.settings, "redis_backoff_base", 1)
+                    if self.settings
+                    else 1
+                )
+                await asyncio.sleep(backoff)
+                await self._reconnect_with_new_token()
+                result = await self.client.delete(key)
+                return bool(result)
             raise
 
     async def ping(self) -> bool:

@@ -42,100 +42,113 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' existing
   name: applicationInsightsName
 }
 
-module containerApp 'br/public:avm/res/app/container-app:0.17.0' = {
-  name: 'container-app'
-  params: {
-    name: '${abbrs.appContainerApps}app-${resourceToken}'
-    location: location
-    tags: tags
-    environmentResourceId: containerAppsEnvironmentId
-    managedIdentities: {
-      userAssignedResourceIds: [managedIdentityId]
+var containerAppName = '${abbrs.appContainerApps}app-${resourceToken}'
+
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: containerAppName
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentityId}': {}
     }
-    registries: [
-      {
-        server: containerRegistryLoginServer
-        identity: managedIdentityId
+  }
+  properties: {
+    environmentId: containerAppsEnvironmentId
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: true
+        targetPort: 8000
+        transport: 'auto'
+        allowInsecure: false
       }
-    ]
-    containers: [
-      {
-        name: 'main'
-        image: imageName
-        resources: {
-          cpu: json('0.25')
-          memory: '0.5Gi'
+      registries: [
+        {
+          server: containerRegistryLoginServer
+          identity: managedIdentityId
         }
-        probes: [
-          {
-            type: 'Liveness'
-            tcpSocket: {
-              port: 8000
-            }
-            initialDelaySeconds: 60
-            periodSeconds: 10
-            timeoutSeconds: 10
-            failureThreshold: 5
-            successThreshold: 1
-          }
-          {
-            type: 'Readiness'
-            httpGet: {
-              path: '/health'
-              port: 8000
-              scheme: 'HTTP'
-            }
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 2
-            successThreshold: 2
-          }
-        ]
-        env: [
-          {
-            name: 'REDIS_HOST'
-            value: redisHost
-          }
-          {
-            name: 'REDIS_PORT'
-            value: '10000'
-          }
-          {
-            name: 'REDIS_SSL'
-            value: 'true'
-          }
-          {
-            name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-            secretRef: 'appinsights-connection-string'
-          }
-          {
-            name: 'APP_PORT'
-            value: '8000'
-          }
-          {
-            name: 'LOG_LEVEL'
-            value: 'INFO'
-          }
-          {
-            name: 'AZURE_CLIENT_ID'
-            value: managedIdentityClientId
-          }
-        ]
-      }
-    ]
-    secrets: [
-      {
-        name: 'appinsights-connection-string'
-        value: applicationInsights.properties.ConnectionString
-      }
-    ]
-    scaleSettings: {
-      minReplicas: 1
-      maxReplicas: 1
+      ]
+      secrets: [
+        {
+          name: 'appinsights-connection-string'
+          value: applicationInsights.properties.ConnectionString
+        }
+      ]
     }
-    ingressTargetPort: 8000
-    ingressExternal: true
+    template: {
+      containers: [
+        {
+          name: 'main'
+          image: imageName
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          probes: [
+            {
+              type: 'Liveness'
+              tcpSocket: {
+                port: 8000
+              }
+              initialDelaySeconds: 60
+              periodSeconds: 10
+              timeoutSeconds: 10
+              failureThreshold: 5
+              successThreshold: 1
+            }
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/health'
+                port: 8000
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 5
+              timeoutSeconds: 3
+              failureThreshold: 2
+              successThreshold: 2
+            }
+          ]
+          env: [
+            {
+              name: 'REDIS_HOST'
+              value: redisHost
+            }
+            {
+              name: 'REDIS_PORT'
+              value: '10000'
+            }
+            {
+              name: 'REDIS_SSL'
+              value: 'true'
+            }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              secretRef: 'appinsights-connection-string'
+            }
+            {
+              name: 'APP_PORT'
+              value: '8000'
+            }
+            {
+              name: 'LOG_LEVEL'
+              value: 'INFO'
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: managedIdentityClientId
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
   }
 }
 
@@ -144,10 +157,11 @@ module alertRules './alert-rules.bicep' = {
   params: {
     location: location
     tags: commonTags
-    containerAppName: containerApp.outputs.name
+    containerAppName: containerApp.name
   }
 }
 
-// Output only the application URL needed for load testing and monitoring
-// Using AZURE_ prefix and SCREAMING_SNAKE_CASE for consistency with main.bicep outputs
-output SERVICE_APP_URL_FROM_MODULE string = 'https://${containerApp.outputs.fqdn}'
+// Outputs for Container App deployment
+// Note: SERVICE_APP_IMAGE_NAME is auto-generated by azd, so we don't output it here
+output SERVICE_APP_NAME string = containerApp.name
+output SERVICE_APP_URL string = 'https://${containerApp.properties.configuration.ingress.fqdn}'

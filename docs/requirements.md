@@ -12,6 +12,7 @@ Azure SRE Agentの自動検出・診断・対応機能を検証する。
 - 2025-07-30: Redis接続リセットAPI要件追加（REQ-010）
 - 2025-07-30: Container Apps応答監視アラート要件追加（REQ-017）
 - 2025-08-03: テレメトリとロギング一貫性向上要件追加（REQ-TEL-001〜003）
+- 2025-11-14: Testcontainersベースの統合テスト要件追加（REQ-TEST-001〜003）
 
 ## 機能要件
 
@@ -188,8 +189,6 @@ Container Appsが異常な応答をしたとき、システムは以下のアラ
 - エラー系メトリクス（例外、障害）は常に100%送信
 - 負荷試験時のコスト最適化
 
-## 品質要件
-
 ### コード品質要件
 
 #### REQ-QUA-001: コードフォーマット
@@ -197,6 +196,32 @@ Container Appsが異常な応答をしたとき、システムは以下のアラ
 - **Ruff formatter** による自動フォーマット適用
 - PEP 8スタイルガイド準拠
 - 一貫したインデント（4スペース）と行長制限（88文字）
+
+#### REQ-QUA-002: ユニットテスト
+システムは常に以下のテスト戦略を実装するものとする：
+- Pytestを使用した包括的なユニットテスト
+- モックを使用したAzureサービスの分離テスト
+- 85%以上のコードカバレッジ
+- CI/CD統合（GitHub Actions）
+
+#### REQ-TEST-001: 統合テスト環境
+システムは常にローカル環境でRedis統合テストを実行できるものとする：
+- Testcontainersを使用したDocker上のRedisコンテナ起動
+- RedisClientのAccess Key認証モード（`use_entra_auth=False`）をサポート
+- 本番環境のEntra ID認証とテスト環境のAccess Key認証を切り替え可能
+- Docker環境があれば外部サービス依存なしでテスト実行可能
+
+#### REQ-TEST-002: テスト階層化
+システムは常に以下の3層テスト構造を維持するものとする：
+- **Unit Tests** (`tests/unit/`): モックを使用した単体テスト、pytest marker: `unit`
+- **Integration Tests** (`tests/integration/`): Testcontainersで実Redisを使用、pytest marker: `integration`
+- **E2E Tests** (`tests/e2e/`): Azureデプロイ環境での動作確認、pytest marker: `e2e`
+
+#### REQ-TEST-003: CI/CD統合
+システムは常にGitHub Actionsでテストパイプラインを実行するものとする：
+- Unit Testsジョブ: モックベースの高速テスト
+- Integration Testsジョブ: Testcontainersを使用した統合テスト
+- 各ジョブは独立して並列実行可能
 - 実装完了後の必須実行項目としてのフォーマット確認
 
 #### REQ-QUA-002: コードリンティング  

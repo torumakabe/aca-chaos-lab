@@ -191,7 +191,7 @@ graph TB
    ```bash
    # プロジェクトルートディレクトリで実行
    # エンドポイントURLの取得
-   APP_URL=$(azd env get-value SERVICE_APP_URI)
+   APP_URL=$(azd env get-value SERVICE_APP_URL)
    
    # ヘルスチェック
    curl "${APP_URL}/health"
@@ -280,11 +280,17 @@ azd deploy
 
 様々な負荷テストシナリオの実行：
 
-**実行場所：負荷テストディレクトリ** (`aca-chaos-lab/src/tests/load/`)
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
 
 ```bash
-# プロジェクトルートディレクトリから負荷テストディレクトリに移動
-cd src/tests/load
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
+# ベースラインテスト（カオスなし）
+make test-load
+
+# または負荷テストディレクトリから直接実行
+cd tests/load
 
 # ベースラインテスト（カオスなし）
 ./run-load-tests.sh baseline
@@ -298,7 +304,7 @@ cd src/tests/load
 # カオステスト（障害注入あり）
 ./run-load-tests.sh chaos
 
-# 負荷テスト完了後はプロジェクトルートに戻る
+# プロジェクトルートに戻る
 cd ../../..
 ```
 
@@ -313,7 +319,10 @@ cd ../../..
 cd src
 
 # ユニットテストの実行
-uv run pytest tests/unit/ -v
+make test
+
+# または直接pytestを使用
+uv run pytest tests/unit/ -v -m unit
 
 # テスト完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -323,22 +332,96 @@ cd ..
 
 **実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
 
+統合テストは **Testcontainers** を使用して、Docker上でRedisコンテナを自動起動し、実際のRedis操作をテストします。外部サービスに依存せず、ローカル環境で完結します。
+
+#### 前提条件
+- **Docker Desktop** または **Docker Engine** が起動していること
+- Python 3.13以上、uv、および開発依存関係がインストール済み
+
+#### 実行方法
+
 ```bash
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
 
-# テスト環境変数の設定
-export TEST_BASE_URL=https://myapp.azurecontainerapps.io
-export TEST_RESOURCE_GROUP=my-resource-group
-export TEST_NSG_NAME=my-nsg
-export TEST_CONTAINER_APP_NAME=my-app
+# 統合テストの実行（Testcontainersが自動でRedisコンテナを起動）
+make test-integration
 
-# 統合テストの実行
-uv run pytest tests/integration/ -v -m e2e
+# または直接スクリプトを実行
+./tests/run-integration-tests.sh
 
 # テスト完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
 ```
+
+#### テスト内容
+- **Redis基本操作**: ping, get, set, delete, incr
+- **RedisClient統合**: Access Key認証モードでの接続・操作
+- **Testcontainers管理**: 自動コンテナ起動・停止
+
+#### 技術詳細
+統合テストでは、本番環境のEntra ID認証ではなく、**Access Key認証モード**を使用します：
+
+```python
+# tests/integration/test_app_integration.py
+client = RedisClient(
+    host=host,
+    port=port,
+    settings=test_settings,
+    use_entra_auth=False,  # Access Key認証（テスト用）
+    password=None,  # Testcontainersはパスワードなし
+)
+```
+
+この設計により：
+- Azure環境に依存しないローカルテスト
+- 高速なテストフィードバック
+- CI/CDでの並列実行が可能
+
+### E2Eテスト
+
+**実行場所：srcディレクトリ** (`aca-chaos-lab/src/`)
+
+E2Eテストは、Azureにデプロイされた実環境に対してAPIテストを実行します。`azd up`でデプロイした後に実行します。
+
+#### 前提条件
+- `azd up`で環境がデプロイ済み
+- `RUN_E2E_TESTS=true`環境変数の設定
+
+#### 前提条件
+- `azd up`で環境がデプロイ済み
+- `RUN_E2E_TESTS=true`環境変数の設定
+
+#### 実行方法
+
+```bash
+# プロジェクトルートディレクトリからsrcディレクトリに移動
+cd src
+
+# E2Eテストの実行
+make test-e2e
+
+# または直接スクリプトを実行
+./tests/e2e/run-e2e-tests.sh
+
+# テスト完了後はプロジェクトルートに戻る（必要に応じて）
+cd ..
+```
+
+このスクリプトはazd環境変数を自動的に読み込み、デプロイされたエンドポイントに対してテストを実行します。
+
+### テスト戦略まとめ
+
+| テスト層 | 場所 | 依存 | 実行環境 | マーカー |
+|---------|------|------|---------|---------|
+| **Unit** | `tests/unit/` | モックのみ | ローカル | `-m unit` |
+| **Integration** | `tests/integration/` | Testcontainers (Docker) | ローカル | `-m integration` |
+| **E2E** | `tests/e2e/` | Azureデプロイ環境 | リモート | `-m e2e` |
+
+**推奨ワークフロー**：
+1. 開発中: Unit Tests（高速フィードバック）
+2. PR作成前: Integration Tests（実Redis動作確認）
+3. デプロイ後: E2E Tests（本番環境検証）
 
 ## 開発
 
@@ -350,14 +433,17 @@ cd ..
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
 
-# リンティング
-uv run ruff check app/
+# リンティング（自動修正付き）
+make lint
 
 # 型チェック
-uv run mypy app/
+make typecheck
 
-# 自動修正
-uv run ruff check app/ --fix
+# コードフォーマット
+make format
+
+# すべてのチェックを実行（lint + typecheck + test）
+make check
 
 # 開発作業完了後はプロジェクトルートに戻る（必要に応じて）
 cd ..
@@ -371,7 +457,10 @@ cd ..
 # プロジェクトルートディレクトリからsrcディレクトリに移動
 cd src
 
-# Dockerイメージのビルド
+# Dockerイメージのビルド（requirements.txt自動生成）
+make build
+
+# またはDockerコマンドを直接使用
 docker build -t aca-chaos-lab:latest .
 
 # ビルド完了後はプロジェクトルートに戻る（必要に応じて）
@@ -409,7 +498,7 @@ azdが管理する環境変数の確認と取得：
 azd env get-values
 
 # 特定の値を取得（例）
-azd env get-value SERVICE_APP_URI
+azd env get-value SERVICE_APP_URL
 azd env get-value AZURE_RESOURCE_GROUP
 azd env get-value SERVICE_APP_NAME
 ```

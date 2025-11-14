@@ -1,6 +1,6 @@
 """Pytest configuration and fixtures."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,13 +14,3 @@ def mock_redis_client():
     client.ping = AsyncMock(return_value=True)
     client.close = AsyncMock()
     return client
-
-
-@pytest.fixture
-def mock_azure_credential():
-    """Mock Azure credential for testing."""
-    credential = MagicMock()
-    credential.get_token = MagicMock(
-        return_value=MagicMock(token="mock_token", expires_on=9999999999)
-    )
-    return credential

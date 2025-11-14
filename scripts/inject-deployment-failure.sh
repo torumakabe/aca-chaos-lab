@@ -129,7 +129,7 @@ az containerapp revision list \
 echo ""
 echo -e "${YELLOW}💡 To restore normal operation:${NC}"
 echo "1. Quick restore (recommended):"
-echo "   azd up"
+echo "   azd deploy"
 echo ""
 echo "2. Or manually deactivate chaos revision:"
 echo "   az containerapp revision deactivate -g $RESOURCE_GROUP -n $APP_NAME --revision \${FAILED_REVISION}"
