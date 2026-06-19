@@ -332,7 +332,7 @@ class RedisClient:
             raise Exception("Redis client not initialized")
         try:
             value = await self.client.get(key)
-            return value if value else None
+            return value.decode() if isinstance(value, bytes) else value or None
         except Exception as e:
             if self._is_auth_error(e):
                 # Single retry after re-authentication
@@ -344,7 +344,7 @@ class RedisClient:
                 await asyncio.sleep(backoff)
                 await self._reconnect_with_new_token()
                 value = await self.client.get(key)
-                return value if value else None
+                return value.decode() if isinstance(value, bytes) else value or None
             raise
 
     async def set(self, key: str, value: str, ex: int | None = None) -> bool:
